@@ -41,6 +41,7 @@ public class ProblemService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> detail(String id) {
+        id = resolveReference(id);
         Map<String, Object> problem = requireProblem(id);
         problem.put("pendingFollowup", mapper.pending(id, LocalDateTime.now(BUSINESS_ZONE)));
         problem.put("fieldOrders", mapper.fieldOrders(id));
@@ -160,6 +161,18 @@ public class ProblemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "问题单已结案");
         }
         return state;
+    }
+
+    private String resolveReference(String reference) {
+        String value = reference.toUpperCase(java.util.Locale.ROOT);
+        if (!value.matches("(AS-)?[0-9]{1,18}")) {
+            return reference;
+        }
+        String id = mapper.findIdByNumber(Long.parseLong(value.replace("AS-", "")));
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "问题单不存在");
+        }
+        return id;
     }
 
     private Map<String, Object> requireProblem(String id) {

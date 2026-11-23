@@ -26,7 +26,7 @@
     <el-card header="问题单与回访待办">
       <form @submit.prevent="openProblem(orderId)">
         <label for="order-id">问题单号</label>
-        <el-input id="order-id" v-model.trim="orderId" />
+        <el-input id="order-id" v-model.trim="orderId" placeholder="例如 AS-12" />
         <el-button native-type="submit" :disabled="busy || !orderId">打开问题单</el-button>
       </form>
       <el-button class="section-button" :disabled="busy" @click="refreshDue">查看到期回访</el-button>
@@ -73,7 +73,7 @@
     </el-card>
     <el-card v-if="problem" :header="problem.title">
       <div class="issue-meta"><span class="status-chip">{{ statusLabel(problem.state) }}</span><span>{{ problem.device }}</span></div>
-      <p class="issue-id">问题单 {{ problem.id }}</p>
+      <p class="issue-id">问题单 {{ orderNumber(problem) }}</p>
       <p class="issue-description">{{ problem.description }}</p>
       <h2>处理记录</h2>
       <ol class="timeline">
@@ -177,6 +177,10 @@ const evidenceSource = ref('')
 const evidence = ref('')
 const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
 
+function orderNumber(item) {
+  return item.displayNumber ? 'AS-' + item.displayNumber : item.id
+}
+
 function dateLabel(value) {
   return value?.replace('T', ' ').slice(0, 16) || ''
 }
@@ -255,7 +259,7 @@ function statusLabel(state) {
 
 async function showProblem(id) {
   problem.value = await loadProblem(id)
-  orderId.value = id
+  orderId.value = orderNumber(problem.value)
   const task = problem.value.pendingFollowup
   owner.value = task?.owner || ''
   dueAt.value = task?.dueAt?.replace(' ', 'T').slice(0, 16) || ''
@@ -267,7 +271,7 @@ async function showProblem(id) {
   contactedAt.value = ''
   evidenceSource.value = ''
   evidence.value = ''
-  history.replaceState(null, '', '?problem=' + encodeURIComponent(id))
+  history.replaceState(null, '', '?problem=' + encodeURIComponent(orderId.value))
 }
 
 function openProblem(id) {

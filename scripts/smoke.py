@@ -57,6 +57,8 @@ path = "/api/problems/" + urllib.parse.quote(created["id"])
 request(path + "/followups", 204, {"note": "已与车主确认故障现象"})
 request(path + "/followups", 400, {"note": " "})
 problem = request(path)
+assert request("/api/problems/AS-" + str(problem["displayNumber"]))["id"] == created["id"]
+assert request("/api/problems/" + str(problem["displayNumber"]))["id"] == created["id"]
 assert problem["device"] == device["device"] and problem["state"] == "open"
 assert [item["action"] for item in problem["activities"]] == ["create", "followup"]
 assert problem["activities"][-1]["note"] == "已与车主确认故障现象"

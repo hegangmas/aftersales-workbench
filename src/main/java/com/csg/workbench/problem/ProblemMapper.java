@@ -20,13 +20,16 @@ public interface ProblemMapper {
         + "VALUES (#{id}, #{actor}, #{action}, #{note})")
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
-    @Select("SELECT id, title, device, state, description FROM problem WHERE id = #{id}")
+    @Select("SELECT id, display_number AS displayNumber, title, device, state, description FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
+
+    @Select("SELECT id FROM problem WHERE display_number = #{number}")
+    String findIdByNumber(@Param("number") long number);
 
     @Select("SELECT action, note, created_at AS createdAt FROM activity WHERE problem_id = #{id} ORDER BY id")
     List<Map<String, Object>> listActivities(@Param("id") String id);
 
-    @Select("SELECT id, title, device, state FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
+    @Select("SELECT id, display_number AS displayNumber, title, device, state FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
     List<Map<String, Object>> findByDevice(@Param("device") String device);
 
     @Select("SELECT state FROM problem WHERE id = #{id} FOR UPDATE")
