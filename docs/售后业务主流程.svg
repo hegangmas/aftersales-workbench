@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 1120" width="1320" height="1120" role="img" aria-labelledby="title desc">
+<title id="title">售后工单业务主流程</title>
+<desc id="desc">受理、识别、分级取证和决策后分流到等待、现场服务或恢复验证，一般咨询可直接结束。安全风险随时升级。</desc>
+<defs>
+<marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#466382"/></marker>
+<marker id="arrow-muted" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#885624"/></marker>
+<style>
+text{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#182d43}
+.bg{fill:#fff}.entry{fill:#f1f5f8;stroke:#9cb0c4}.core{fill:#eaf2fb;stroke:#748fac}
+.branch{fill:#fffaef;stroke:#b88b48}.risk{fill:#fff2e9;stroke:#be8247}.close{fill:#e7f3ed;stroke:#72a28b}
+.note{fill:#f8fafc;stroke:#d4dfe8}.edge,.dash{fill:none;stroke:#466382;stroke-width:1.7}
+.dash{stroke:#885624;stroke-dasharray:6 5}.heading{font-size:31px;font-weight:700}
+.sub{font-size:14px;fill:#4b637a}.node-title{font-size:19px;font-weight:700}
+.node-body,.edge-label,.note-body{font-size:15px;fill:#304d66}.note-title{font-size:16px;font-weight:700}
+</style>
+</defs>
+<rect x="0" y="0" width="1320" height="1120" rx="0" class="bg"/>
+<text x="64" y="60" class="heading" text-anchor="start">售后工单业务主流程</text>
+<text x="64" y="92" class="sub" text-anchor="start">业务评审稿 1.0　·　2026-11-23</text>
+<text x="1258" y="92" class="sub" text-anchor="end">处理路径与责任归属</text>
+<line x1="64" y1="114" x2="1256" y2="114" stroke="#dce3e9"/>
+<path d="M660 170 V199" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 267 V294" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 362 V389" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 457 V484" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 552 V699" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 767 V899" class="edge" marker-end="url(#arrow)"/>
+<path d="M660 967 V996" class="edge" marker-end="url(#arrow)"/>
+<path d="M475 328 H405 V559 H397" class="edge" marker-end="url(#arrow)"/>
+<path d="M475 518 H424 V594 H397" class="edge" marker-end="url(#arrow)"/>
+<path d="M845 518 H1085 V579" class="edge" marker-end="url(#arrow)"/>
+<path d="M1085 647 V733 H845" class="edge" marker-end="url(#arrow)"/>
+<path d="M475 733 H408 V631 H397" class="edge" marker-end="url(#arrow)"/>
+<path d="M845 423 H924 V426" class="dash" marker-end="url(#arrow-muted)"/>
+<path d="M845 328 H883 V933 H845" class="dash" marker-end="url(#arrow-muted)"/>
+<text x="686" y="635" class="edge-label" text-anchor="start">远程措施已执行</text>
+<text x="205" y="465" class="edge-label" text-anchor="start">身份待核实</text>
+<text x="196" y="519" class="edge-label" text-anchor="start">待客户／补证／二线</text>
+<text x="1099" y="559" class="edge-label" text-anchor="start">需现场核实或维修</text>
+<text x="1110" y="715" class="edge-label" text-anchor="middle">获得有效回执</text>
+<text x="251" y="738" class="edge-label" text-anchor="middle">尚待验证</text>
+<text x="915" y="910" class="edge-label" text-anchor="start">一般咨询已答复</text>
+<text x="685" y="850" class="edge-label" text-anchor="start">确认恢复</text>
+<rect x="475" y="122" width="370" height="48" rx="12" class="entry"/>
+<text x="660" y="142" class="node-title" text-anchor="middle">报修和咨询入口</text>
+<text x="660" y="167" class="node-body" text-anchor="middle">400／群聊／服务商／小程序／车企</text>
+<rect x="475" y="199" width="370" height="68" rx="12" class="core"/>
+<text x="660" y="229" class="node-title" text-anchor="middle">B01　受理</text>
+<text x="660" y="254" class="node-body" text-anchor="middle">记录来源、客户现象及回访方式</text>
+<rect x="475" y="294" width="370" height="68" rx="12" class="core"/>
+<text x="660" y="324" class="node-title" text-anchor="middle">B02　识别与关联</text>
+<text x="660" y="349" class="node-body" text-anchor="middle">核实项目、事发设备与原问题</text>
+<rect x="475" y="389" width="370" height="68" rx="12" class="core"/>
+<text x="660" y="419" class="node-title" text-anchor="middle">B03　分级取证</text>
+<text x="660" y="444" class="node-body" text-anchor="middle">判别风险，查运行、安装与生产证据</text>
+<rect x="475" y="484" width="370" height="68" rx="12" class="core"/>
+<text x="660" y="514" class="node-title" text-anchor="middle">B04　决策与处理</text>
+<text x="660" y="539" class="node-body" text-anchor="middle">远程指导、二线会诊或申请现场</text>
+<rect x="23" y="554" width="374" height="86" rx="12" class="branch"/>
+<text x="210" y="593" class="node-title" text-anchor="middle">B05　等待与接续</text>
+<text x="210" y="618" class="node-body" text-anchor="middle">保留负责人、下一步与回访时间</text>
+<rect x="925" y="579" width="320" height="68" rx="12" class="branch"/>
+<text x="1085" y="609" class="node-title" text-anchor="middle">B06　现场服务</text>
+<text x="1085" y="634" class="node-body" text-anchor="middle">智享乐装派单、执行和回执</text>
+<rect x="924" y="391" width="332" height="74" rx="12" class="risk"/>
+<text x="1090" y="424" class="node-title" text-anchor="middle">可随时升级</text>
+<text x="1090" y="449" class="node-body" text-anchor="middle">安全信号立即转专业人员，确保接手</text>
+<rect x="475" y="699" width="370" height="68" rx="12" class="core"/>
+<text x="660" y="729" class="node-title" text-anchor="middle">B07　验证</text>
+<text x="660" y="754" class="node-body" text-anchor="middle">核对实际恢复证据</text>
+<rect x="475" y="899" width="370" height="68" rx="12" class="close"/>
+<text x="660" y="929" class="node-title" text-anchor="middle">B08　结束与复盘</text>
+<text x="660" y="954" class="node-body" text-anchor="middle">记录结论、告知与质量任务</text>
+<rect x="475" y="996" width="370" height="52" rx="12" class="entry"/>
+<text x="660" y="1028" class="node-title" text-anchor="middle">归档 · 复发关联前次 · 误关可重开</text>
+<rect x="30" y="782" width="378" height="118" rx="12" class="note"/>
+<text x="49" y="808" class="note-title" text-anchor="start">等待结束后的去向</text>
+<text x="49" y="833" class="note-body" text-anchor="start">收到身份核实线索  →  回 B02 确认</text>
+<text x="49" y="856" class="note-body" text-anchor="start">补证或到期续办  →  从 B03 接续</text>
+<text x="49" y="879" class="note-body" text-anchor="start">仅等待复测  →  回 B07 验证</text>
+<rect x="916" y="782" width="374" height="96" rx="12" class="note"/>
+<text x="935" y="808" class="note-title" text-anchor="start">拒单、取消或未恢复</text>
+<text x="935" y="836" class="note-body" text-anchor="start">现场拒单／取消  →  回 B04 重新安排</text>
+<text x="935" y="859" class="note-body" text-anchor="start">验证未恢复  →  回 B03 继续排查</text>
+<text x="64" y="1086" class="sub" text-anchor="start">实线箭头　主要处理路径</text>
+<text x="334" y="1086" class="sub" text-anchor="start">虚线箭头　可直接结束或跨阶段升级</text>
+<text x="763" y="1086" class="sub" text-anchor="start">工作台维护问题与跟进 · 智享乐装保留现场工单</text>
+</svg>

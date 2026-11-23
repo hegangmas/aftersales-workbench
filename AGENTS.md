@@ -1,5 +1,7 @@
 # 售后工作台开发约定
 
+接手时先读 [完整业务与开发资料](docs/README.md)，对照技术规格、业务流程和验收用例，再核对当前代码。
+
 ## 技术栈
 
 售后工作台与公司 MES、充电桩管理平台对齐，方便两边团队接手。后端采用 Java、Spring Boot、Maven、MyBatis-Plus 和 MySQL。Web 前端采用 Vue 3、Element Plus 和 Vue CLI 5。版本以本仓库 `pom.xml` 和 `web/package-lock.json` 为准。变更 JDK、构建工具或框架主版本时，先与维护团队确认运行和发布基线。
