@@ -17,8 +17,8 @@ public interface ProblemMapper {
                        @Param("description") String description, @Param("device") String device);
 
     @Insert("INSERT INTO activity (problem_id, actor, action, note) "
-        + "VALUES (#{id}, 'early', #{action}, #{note})")
-    void insertActivity(@Param("id") String id, @Param("action") String action, @Param("note") String note);
+        + "VALUES (#{id}, #{actor}, #{action}, #{note})")
+    void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
     @Select("SELECT id, title, device, state, description FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
@@ -51,8 +51,20 @@ public interface ProblemMapper {
     @Update("UPDATE problem SET state = #{state}, version = version + 1 WHERE id = #{id}")
     void changeState(@Param("id") String id, @Param("state") String state);
 
-    @Insert("INSERT INTO verification (problem_id, actor, source, evidence) VALUES (#{id}, 'early', 'customer', #{note})")
-    void verify(@Param("id") String id, @Param("note") String note);
+    @Insert("INSERT INTO verification (problem_id, actor, source, evidence) VALUES (#{id}, #{actor}, #{source}, #{note})")
+    void verify(@Param("id") String id, @Param("actor") String actor,
+                @Param("source") String source, @Param("note") String note);
+
+    @Insert("INSERT INTO callback_result (problem_id, actor, contacted_at, outcome, note, evidence_source, evidence) "
+        + "VALUES (#{id}, #{actor}, #{when}, #{outcome}, #{note}, #{source}, #{evidence})")
+    void insertCallback(@Param("id") String id, @Param("actor") String actor,
+                        @Param("when") LocalDateTime when, @Param("outcome") String outcome,
+                        @Param("note") String note, @Param("source") String source,
+                        @Param("evidence") String evidence);
+
+    @Select("SELECT actor, contacted_at AS contactedAt, outcome, note, evidence_source AS evidenceSource, evidence "
+        + "FROM callback_result WHERE problem_id = #{id} ORDER BY activity_id DESC")
+    List<Map<String, Object>> callbackResults(@Param("id") String id);
 
     @Select("SELECT external_no AS externalNo, state, receipt FROM field_order WHERE problem_id = #{id} ORDER BY id DESC")
     List<Map<String, Object>> fieldOrders(@Param("id") String id);

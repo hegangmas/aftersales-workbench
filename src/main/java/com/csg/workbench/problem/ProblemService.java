@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,14 +29,14 @@ public class ProblemService {
         devices.requireDevice(device);
         String id = UUID.randomUUID().toString();
         mapper.insertProblem(id, title.trim(), description.trim(), device);
-        mapper.insertActivity(id, "create", "受理问题");
+        mapper.insertActivity(id, actor(), "create", "受理问题");
         return id;
     }
 
     @Transactional
     public void recordFollowup(String id, String note) {
         lockActive(id);
-        mapper.insertActivity(id, "followup", note.trim());
+        mapper.insertActivity(id, actor(), "followup", note.trim());
     }
 
     @Transactional(readOnly = true)
@@ -43,6 +44,7 @@ public class ProblemService {
         Map<String, Object> problem = requireProblem(id);
         problem.put("pendingFollowup", mapper.pending(id, LocalDateTime.now(BUSINESS_ZONE)));
         problem.put("fieldOrders", mapper.fieldOrders(id));
+        problem.put("callbackResults", mapper.callbackResults(id));
         problem.put("activities", mapper.listActivities(id));
         return problem;
     }
@@ -67,33 +69,52 @@ public class ProblemService {
         mapper.completeFollowup(id);
         mapper.schedule(id, owner.trim(), step.trim(), due);
         mapper.changeState(id, "waiting");
-        mapper.insertActivity(id, "schedule", "回访安排：" + due + "，" + owner.trim() + "，" + step.trim());
+        mapper.insertActivity(id, actor(), "schedule", "回访安排：" + due + "，" + owner.trim() + "，" + step.trim());
     }
 
     @Transactional
-    public void finishCallback(String id, String outcome, String note) {
+    public void finishCallback(String id, String outcome, String note, LocalDateTime contactedAt,
+                               String source, String evidence) {
         lockActive(id);
-        if (mapper.completeFollowup(id) == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "当前没有待处理回访");
+        if (mapper.activeFieldOrders(id) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
+        }
+        if (contactedAt == null || contactedAt.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写实际联系时间");
         }
         String result = note.trim();
+        String next;
+        String label;
         switch (outcome) {
             case "continue":
-                mapper.changeState(id, "open");
-                mapper.insertActivity(id, "callback", "继续跟进：" + result);
+                next = "open";
+                label = "继续跟进";
                 break;
             case "field":
-                mapper.changeState(id, "field");
-                mapper.insertActivity(id, "callback", "待现场派单（需在智享乐装提交）：" + result);
+                next = "field";
+                label = "待现场派单";
                 break;
             case "resolved":
-                mapper.verify(id, result);
-                mapper.changeState(id, "resolved");
-                mapper.insertActivity(id, "callback", "确认恢复并结案：" + result);
+                if (!("customer".equals(source) || "platform".equals(source) || "field".equals(source))
+                    || evidence == null || evidence.trim().isEmpty()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "确认恢复需要核验来源与具体依据");
+                }
+                mapper.verify(id, actor(), source, evidence.trim());
+                next = "resolved";
+                label = "确认恢复并结案";
                 break;
             default:
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "未知回访结果");
         }
+        mapper.completeFollowup(id);
+        mapper.insertCallback(id, actor(), contactedAt, outcome, result,
+            "resolved".equals(outcome) ? source : null, "resolved".equals(outcome) ? evidence.trim() : null);
+        mapper.changeState(id, next);
+        mapper.insertActivity(id, actor(), "callback", label + "：" + result);
+    }
+
+    private String actor() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
     @Transactional
@@ -106,7 +127,7 @@ public class ProblemService {
         } catch (DuplicateKeyException duplicate) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "现场单号已关联");
         }
-        mapper.insertActivity(id, "field_link", "人工关联智享乐装现场单：" + number.trim());
+        mapper.insertActivity(id, actor(), "field_link", "人工关联智享乐装现场单：" + number.trim());
     }
 
     @Transactional
@@ -127,7 +148,7 @@ public class ProblemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "现场单不可更新");
         }
         mapper.changeState(id, next);
-        mapper.insertActivity(id, "field_update", "人工登记智享乐装回执 " + number + " · " + label + "：" + receipt.trim());
+        mapper.insertActivity(id, actor(), "field_update", "人工登记智享乐装回执 " + number + " · " + label + "：" + receipt.trim());
     }
 
     private String lockActive(String id) {

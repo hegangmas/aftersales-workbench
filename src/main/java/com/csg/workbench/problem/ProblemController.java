@@ -55,7 +55,8 @@ public class ProblemController {
     @PostMapping("/{id}/callback/result")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void finish(@PathVariable String id, @Valid @RequestBody CallbackResult request) {
-        problems.finishCallback(id, request.outcome, request.note);
+        problems.finishCallback(id, request.outcome, request.note, request.contactedAt,
+            request.evidenceSource, request.evidence);
     }
 
     @PostMapping("/{id}/field-orders")
@@ -86,6 +87,9 @@ public class ProblemController {
     }
 
     public static class CallbackResult {
+        public LocalDateTime contactedAt;
+        @Size(max = 20) public String evidenceSource;
+        @Size(max = 1000) public String evidence;
         @NotBlank @Size(max = 20) public String outcome;
         @NotBlank @Size(max = 1000) public String note;
     }

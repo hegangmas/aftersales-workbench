@@ -1,6 +1,14 @@
 server:
   address: 127.0.0.1
   port: ${PORT:8780}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        name: WORKBENCH_SESSION
+        http-only: true
+        same-site: strict
+        secure: ${WORKBENCH_SECURE_COOKIE:false}
 spring:
   datasource:
     url: ${WORKBENCH_DB_URL:jdbc:mysql://127.0.0.1:3306/soongo_aftersales_java}
