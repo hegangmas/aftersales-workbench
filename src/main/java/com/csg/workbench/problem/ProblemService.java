@@ -60,15 +60,14 @@ public class ProblemService {
 
     @Transactional
     public void schedule(String id, String owner, String step, LocalDateTime due) {
-        lockActive(id);
-        if (mapper.activeFieldOrders(id) > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
-        }
+        String state = lockActive(id);
+        requireFieldStageClear(id, state);
         if (due == null || !due.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择未来的回访时间");
         }
         mapper.completeFollowup(id);
         mapper.schedule(id, owner.trim(), step.trim(), due);
+        mapper.setResume(id, resumeAfterSchedule(id, state));
         mapper.changeState(id, "waiting");
         mapper.insertActivity(id, actor(), "schedule", "回访安排：" + due + "，" + owner.trim() + "，" + step.trim());
     }
@@ -76,10 +75,8 @@ public class ProblemService {
     @Transactional
     public void finishCallback(String id, String outcome, String note, LocalDateTime contactedAt,
                                String source, String evidence) {
-        lockActive(id);
-        if (mapper.activeFieldOrders(id) > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
-        }
+        String state = lockActive(id);
+        requireFieldStageClear(id, state);
         if (contactedAt == null || contactedAt.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写实际联系时间");
         }
@@ -88,7 +85,7 @@ public class ProblemService {
         String label;
         switch (outcome) {
             case "continue":
-                next = "open";
+                next = "verify".equals(state) || "verify".equals(mapper.resumeState(id)) ? "verify" : "open";
                 label = "继续跟进";
                 break;
             case "field":
@@ -110,6 +107,7 @@ public class ProblemService {
         mapper.completeFollowup(id);
         mapper.insertCallback(id, actor(), contactedAt, outcome, result,
             "resolved".equals(outcome) ? source : null, "resolved".equals(outcome) ? evidence.trim() : null);
+        mapper.setResume(id, null);
         mapper.changeState(id, next);
         mapper.insertActivity(id, actor(), "callback", label + "：" + result);
     }
@@ -148,8 +146,28 @@ public class ProblemService {
         if (mapper.updateFieldOrder(id, number, state, receipt.trim()) != 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "现场单不可更新");
         }
+        mapper.setResume(id, null);
         mapper.changeState(id, next);
         mapper.insertActivity(id, actor(), "field_update", "人工登记智享乐装回执 " + number + " · " + label + "：" + receipt.trim());
+    }
+
+    private void requireFieldStageClear(String id, String state) {
+        if (mapper.activeFieldOrders(id) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
+        }
+        if ("field".equals(state)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先关联现场单，不能跳过派单阶段");
+        }
+    }
+
+    private String resumeAfterSchedule(String id, String state) {
+        if ("verify".equals(state)) {
+            return "verify";
+        }
+        if ("waiting".equals(state) && "verify".equals(mapper.resumeState(id))) {
+            return "verify";
+        }
+        return null;
     }
 
     private String lockActive(String id) {

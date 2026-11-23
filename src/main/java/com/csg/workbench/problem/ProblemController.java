@@ -72,35 +72,35 @@ public class ProblemController {
     }
 
     public static class FieldLink {
-        @NotBlank @Size(max = 64) public String externalNo;
+        @NotBlank(message = "请填写现场单号") @Size(max = 64, message = "现场单号不能超过64字") public String externalNo;
     }
 
     public static class FieldResult extends FieldLink {
-        @NotBlank @Size(max = 20) public String state;
-        @NotBlank @Size(max = 700) public String receipt;
+        @NotBlank(message = "请填写现场单状态") @Size(max = 20, message = "现场单状态无效") public String state;
+        @NotBlank(message = "请填写现场回执") @Size(max = 700, message = "现场回执不能超过700字") public String receipt;
     }
 
     public static class Schedule {
-        @NotBlank @Size(max = 20) public String owner;
-        @NotBlank @Size(max = 500) public String nextStep;
+        @NotBlank(message = "请填写回访负责人") @Size(max = 20, message = "回访负责人不能超过20字") public String owner;
+        @NotBlank(message = "请填写待确认事项") @Size(max = 500, message = "待确认事项不能超过500字") public String nextStep;
         public LocalDateTime dueAt;
     }
 
     public static class CallbackResult {
         public LocalDateTime contactedAt;
-        @Size(max = 20) public String evidenceSource;
-        @Size(max = 1000) public String evidence;
-        @NotBlank @Size(max = 20) public String outcome;
-        @NotBlank @Size(max = 1000) public String note;
+        @Size(max = 20, message = "恢复核验来源无效") public String evidenceSource;
+        @Size(max = 1000, message = "恢复依据不能超过1000字") public String evidence;
+        @NotBlank(message = "请填写回访结果") @Size(max = 20, message = "回访结果无效") public String outcome;
+        @NotBlank(message = "请填写回访说明") @Size(max = 1000, message = "回访说明不能超过1000字") public String note;
     }
 
     public static class CreateProblem {
-        @NotBlank @Size(max = 40) public String device;
-        @NotBlank @Size(max = 150) public String title;
-        @NotBlank @Size(max = 1000) public String description;
+        @NotBlank(message = "请填写设备编号") @Size(max = 40, message = "设备编号不能超过40字") public String device;
+        @NotBlank(message = "请填写问题标题") @Size(max = 150, message = "问题标题不能超过150字") public String title;
+        @NotBlank(message = "请填写现象描述") @Size(max = 1000, message = "现象描述不能超过1000字") public String description;
     }
 
     public static class Followup {
-        @NotBlank @Size(max = 1500) public String note;
+        @NotBlank(message = "请填写跟进记录") @Size(max = 1500, message = "跟进记录不能超过1500字") public String note;
     }
 }

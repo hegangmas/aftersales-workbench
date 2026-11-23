@@ -1,6 +1,11 @@
 server:
   address: 127.0.0.1
-  port: ${PORT:8780}
+  port: ${PORT:8788}
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
   servlet:
     session:
       timeout: 30m

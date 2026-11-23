@@ -8,7 +8,9 @@
       <section class="login-cover"><span class="cover-mark">S</span><h1>售后工作台</h1><p>设备查询、问题受理与回访</p></section>
       <section class="login-panel">
         <h2>账号登录</h2>
-        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+        <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
+          <el-alert :title="error" type="error" :closable="false" show-icon />
+        </div>
         <form @submit.prevent="signIn">
           <label for="username">账号</label>
           <el-input id="username" v-model.trim="username" autocomplete="username" required />
@@ -19,8 +21,10 @@
       </section>
     </main>
     <main v-if="account" class="workspace">
-      <div class="page-heading"><h1>问题处理</h1><span>模拟数据</span></div>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <div class="page-heading"><h1>问题处理</h1><span>模拟数据 · 未连接生产系统</span></div>
+      <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
+        <el-alert :title="error" type="error" :closable="false" show-icon />
+      </div>
       <div class="workspace-grid">
         <aside class="sidebar">
     <el-card header="问题单与回访待办">
@@ -78,7 +82,8 @@
       <h2>处理记录</h2>
       <ol class="timeline">
         <li v-for="(activity, index) in problem.activities" :key="index">
-          <time>{{ dateLabel(activity.createdAt) }}</time><div>{{ activity.note }}</div>
+          <time>{{ dateLabel(activity.createdAt) }}</time>
+          <div><span v-if="activity.actor">{{ activity.actor }} · </span>{{ activity.note }}</div>
         </li>
       </ol>
       <div v-if="problem.callbackResults?.length" class="callback-history">
@@ -96,8 +101,10 @@
       </form>
       <FieldOrders :key="problem.id + ':' + (problem.fieldOrders?.[0]?.state || '')"
         :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
-      <section v-if="problem.state !== 'resolved' && !fieldInProgress" class="callback">
+      <p v-if="problem.state === 'field'" class="stage-note">现场阶段请先关联智享乐装现场单并登记结果。未关联现场单时，不能用回访跳过派单。</p>
+      <section v-if="problem.state !== 'resolved' && problem.state !== 'field' && !fieldInProgress" class="callback">
         <h2>回访安排</h2>
+        <p v-if="problem.state === 'verify' || problem.resumeState === 'verify'" class="stage-note">待验证问题可以安排回访。选择继续跟进后，问题仍回到待验证。</p>
         <p v-if="problem.pendingFollowup">
           {{ problem.pendingFollowup.overdue ? '已到期' : '待回访' }} ·
           {{ problem.pendingFollowup.dueAt }} · {{ problem.pendingFollowup.owner }} ·
@@ -147,7 +154,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import FieldOrders from './components/FieldOrders.vue'
 import { currentAccount, login, logout, addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, linkFieldOrder, loadProblem, lookupDevice, recordFieldResult, scheduleCallback } from './api/workbench'
 
@@ -159,6 +166,7 @@ const device = ref(null)
 const problem = ref(null)
 const busy = ref(false)
 const error = ref('')
+const errorSummary = ref(null)
 const orderId = ref('')
 const deviceOrders = ref([])
 const dueOrders = ref(null)
@@ -309,6 +317,8 @@ async function run(action) {
     await action()
   } catch (failure) {
     error.value = failure.message
+    await nextTick()
+    if (errorSummary.value) errorSummary.value.focus()
   } finally {
     busy.value = false
   }
@@ -367,6 +377,8 @@ h2 { font-size: 16px; }
 .el-card { --el-card-border-radius: 16px; --el-card-border-color: var(--line); margin-bottom: 16px; }
 .el-card__header { font-weight: 700; }
 .el-alert { margin-bottom: 16px; }
+.error-summary:focus { outline: 3px solid #087e79; outline-offset: 2px; }
+.stage-note { color: var(--muted); }
 form { display: grid; gap: 9px; }
 form label { margin-top: 2px; font-size: 13px; font-weight: 600; }
 form .el-button { justify-self: start; }

@@ -20,13 +20,14 @@ public interface ProblemMapper {
         + "VALUES (#{id}, #{actor}, #{action}, #{note})")
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
-    @Select("SELECT id, display_number AS displayNumber, title, device, state, description FROM problem WHERE id = #{id}")
+    @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState "
+        + "FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
 
     @Select("SELECT id FROM problem WHERE display_number = #{number}")
     String findIdByNumber(@Param("number") long number);
 
-    @Select("SELECT action, note, created_at AS createdAt FROM activity WHERE problem_id = #{id} ORDER BY id")
+    @Select("SELECT actor, action, note, created_at AS createdAt FROM activity WHERE problem_id = #{id} ORDER BY id")
     List<Map<String, Object>> listActivities(@Param("id") String id);
 
     @Select("SELECT id, display_number AS displayNumber, title, device, state FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
@@ -53,6 +54,12 @@ public interface ProblemMapper {
 
     @Update("UPDATE problem SET state = #{state}, version = version + 1 WHERE id = #{id}")
     void changeState(@Param("id") String id, @Param("state") String state);
+
+    @Select("SELECT resume_state FROM problem WHERE id = #{id}")
+    String resumeState(@Param("id") String id);
+
+    @Update("UPDATE problem SET resume_state = #{resume,jdbcType=VARCHAR} WHERE id = #{id}")
+    void setResume(@Param("id") String id, @Param("resume") String resume);
 
     @Insert("INSERT INTO verification (problem_id, actor, source, evidence) VALUES (#{id}, #{actor}, #{source}, #{note})")
     void verify(@Param("id") String id, @Param("actor") String actor,

@@ -9,6 +9,24 @@ async function csrf() {
   return csrfToken
 }
 
+function safeServerMessage(payload) {
+  const message = payload && typeof payload.message === 'string' ? payload.message.trim() : ''
+  if (!message || message.length > 200) return ''
+  if (/exception|sql|stack|jdbc|password|secret|select |insert |update |delete /i.test(message)) return ''
+  return message
+}
+
+async function failureMessage(response) {
+  if (response.status === 401) return '请重新登录'
+  let payload = null
+  try {
+    payload = await response.json()
+  } catch (ignore) {
+    payload = null
+  }
+  return safeServerMessage(payload) || ('请求失败（' + response.status + '）')
+}
+
 async function request(path, body) {
   const options = body === undefined ? {} : {
     method: 'POST',
@@ -22,7 +40,7 @@ async function request(path, body) {
       window.dispatchEvent(new Event('workbench-session-expired'))
     }
     if (response.status === 403) csrfToken = undefined
-    throw new Error(response.status === 401 ? '请重新登录' : '请求失败（' + response.status + '）')
+    throw new Error(await failureMessage(response))
   }
   return response.status === 204 ? undefined : response.json()
 }

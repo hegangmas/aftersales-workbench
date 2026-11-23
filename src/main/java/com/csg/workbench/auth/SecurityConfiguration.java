@@ -24,7 +24,7 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain workbenchSecurity(HttpSecurity http) throws Exception {
         http.authorizeRequests()
-            .antMatchers("/api/session/csrf", "/api/session/login").permitAll()
+            .antMatchers("/api/health", "/api/session/csrf", "/api/session/login").permitAll()
             .antMatchers("/api/**").authenticated()
             .anyRequest().permitAll()
             .and().requestCache().disable()
