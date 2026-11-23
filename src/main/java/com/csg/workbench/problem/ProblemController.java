@@ -1,6 +1,8 @@
 package com.csg.workbench.problem;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
@@ -32,6 +34,39 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void followup(@PathVariable String id, @Valid @RequestBody Followup request) {
         problems.recordFollowup(id, request.note);
+    }
+
+    @GetMapping
+    public List<Map<String, Object>> search(@RequestParam String device) {
+        return problems.findByDevice(device);
+    }
+
+    @GetMapping("/due")
+    public List<Map<String, Object>> due() {
+        return problems.due();
+    }
+
+    @PostMapping("/{id}/callback")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void schedule(@PathVariable String id, @Valid @RequestBody Schedule request) {
+        problems.schedule(id, request.owner, request.nextStep, request.dueAt);
+    }
+
+    @PostMapping("/{id}/callback/result")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void finish(@PathVariable String id, @Valid @RequestBody CallbackResult request) {
+        problems.finishCallback(id, request.outcome, request.note);
+    }
+
+    public static class Schedule {
+        @NotBlank @Size(max = 20) public String owner;
+        @NotBlank @Size(max = 500) public String nextStep;
+        public LocalDateTime dueAt;
+    }
+
+    public static class CallbackResult {
+        @NotBlank @Size(max = 20) public String outcome;
+        @NotBlank @Size(max = 1000) public String note;
     }
 
     public static class CreateProblem {

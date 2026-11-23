@@ -13,3 +13,8 @@ export const lookupDevice = query => request('/devices/lookup?query=' + encodeUR
 export const createProblem = form => request('/problems', form)
 export const loadProblem = id => request('/problems/' + encodeURIComponent(id))
 export const addFollowup = (id, note) => request('/problems/' + encodeURIComponent(id) + '/followups', { note })
+
+export const findProblems = device => request('/problems?device=' + encodeURIComponent(device))
+export const dueCallbacks = () => request('/problems/due')
+export const scheduleCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback', form)
+export const finishCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback/result', form)
