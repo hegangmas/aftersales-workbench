@@ -28,6 +28,7 @@
       <div class="page-heading"><h1>问题处理</h1><p>模拟数据 · 未连接生产系统</p></div>
       <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
         <el-alert :title="error" type="error" :closable="false" show-icon />
+        <button v-if="problem" type="button" @click="openProblem(problem.id)">刷新问题单</button>
       </div>
       <div class="workspace-grid">
         <aside class="sidebar" aria-label="问题与设备">
@@ -37,9 +38,12 @@
         <el-input id="order-id" v-model.trim="orderId" placeholder="例如 AS-12" />
         <el-button native-type="submit" :disabled="busy || !orderId">打开问题单</el-button>
       </form>
-      <el-button class="section-button" :disabled="busy" @click="refreshDue">查看到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshDue('mine')">我的到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshDue('team')">团队到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshMine">我的待办</el-button>
       <p v-if="dueOrders && !dueOrders.length">当前没有到期回访</p>
-      <ul v-if="dueOrders" class="work-list">
+      <div v-if="dueOrders" class="scroll-region" tabindex="0" role="region" aria-label="到期回访">
+      <ul class="work-list">
         <li v-for="item in dueOrders" :key="item.problemId">
           <button type="button" :aria-current="problem?.id === item.problemId ? 'true' : undefined" @click="openProblem(item.problemId)">
             <span class="row-title">{{ item.title }}</span>
@@ -47,6 +51,18 @@
           </button>
         </li>
       </ul>
+      </div>
+      <div v-if="mine" class="scroll-region" tabindex="0" role="region" aria-label="我的待办">
+        <p v-if="!mine.length">当前没有负责中的问题单</p>
+        <ul v-else class="work-list">
+          <li v-for="item in mine" :key="item.id">
+            <button type="button" :aria-current="problem?.id === item.id ? 'true' : undefined" @click="openProblem(item.id)">
+              <span class="row-title">{{ orderNumber(item) }} · {{ item.title }}</span>
+              <span class="row-meta">{{ item.device }} · {{ statusLabel(item.state) }}</span>
+            </button>
+          </li>
+        </ul>
+      </div>
     </el-card>
     <el-card header="设备查询">
       <form @submit.prevent="search">
@@ -67,6 +83,28 @@
           </li>
         </ul>
       </section>
+    </el-card>
+    <el-card v-if="account?.role === 'admin'" header="账号">
+      <form @submit.prevent="addAccount">
+        <label for="new-username">新账号</label>
+        <el-input id="new-username" v-model.trim="newUsername" maxlength="20" autocomplete="off" required />
+        <label for="new-password">初始密码</label>
+        <el-input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+        <label for="new-role">角色</label>
+        <select id="new-role" v-model="newRole">
+          <option value="operator">坐席</option>
+          <option value="admin">管理员</option>
+        </select>
+        <el-button native-type="submit" :disabled="busy">创建账号</el-button>
+      </form>
+      <div class="scroll-region" tabindex="0" role="region" aria-label="账号列表">
+        <ul class="work-list">
+          <li v-for="item in accounts" :key="item.username">
+            <span class="row-title">{{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }} · {{ item.enabled ? '启用' : '禁用' }}</span>
+            <button type="button" :disabled="busy" @click="toggleAccount(item)">{{ item.enabled ? '禁用' : '启用' }}</button>
+          </li>
+        </ul>
+      </div>
     </el-card>
         </aside>
         <section class="details">
@@ -90,9 +128,31 @@
         <dl class="facts">
           <div><dt>桩编码</dt><dd>{{ problem.device }}</dd></div>
           <div><dt>状态</dt><dd><span class="status-chip" :data-state="problem.state">{{ statusLabel(problem.state) }}</span></dd></div>
+          <div><dt>负责人</dt><dd>{{ ownerLabel(problem.owner) }}</dd></div>
           <div><dt>下一步</dt><dd>{{ nextAction }}</dd></div>
         </dl>
       </header>
+      <p v-if="unowned(problem) && problem.state !== 'resolved'"><button type="button" :disabled="busy" @click="claim">认领问题单</button></p>
+      <form v-if="canHandoff" @submit.prevent="handoff">
+        <label for="handoff-target">转交给</label>
+        <select id="handoff-target" v-model="handoffTarget" required>
+          <option value="" disabled>请选择</option>
+          <option v-for="item in assignees" :key="item.username" :value="item.username">{{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }}</option>
+        </select>
+        <label for="handoff-reason">转交原因</label>
+        <el-input id="handoff-reason" v-model.trim="handoffReason" maxlength="500" />
+        <el-button native-type="submit" :disabled="busy || !handoffTarget || !handoffReason">转交</el-button>
+      </form>
+      <section v-if="problem.ownershipEvents?.length">
+        <h2>认领与转交</h2>
+        <div class="scroll-region" tabindex="0" role="region" aria-label="认领与转交">
+          <ul class="work-list">
+            <li v-for="(item, index) in problem.ownershipEvents" :key="index">
+              {{ dateLabel(item.createdAt) }} · {{ item.actor }} · {{ item.action === 'claim' ? '认领' : '由 ' + (item.fromOwner === 'early' ? '无主' : item.fromOwner) + ' 交给 ' + item.toOwner }}<span v-if="item.reason"> · {{ item.reason }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
       <p class="issue-description">{{ problem.description }}</p>
       <h2>处理记录</h2>
       <ol class="timeline">
@@ -116,7 +176,12 @@
       </form>
       <FieldOrders :key="problem.id + ':' + (problem.fieldOrders?.[0]?.state || '')"
         :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
-      <p v-if="problem.state === 'field'" class="stage-note">现场阶段请先关联智享乐装现场单并登记结果。未关联现场单时，不能用回访跳过派单。</p>
+      <p v-if="problem.state === 'field'" class="stage-note">待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。</p>
+      <form v-if="problem.state === 'field' && !fieldInProgress" @submit.prevent="withdrawDispatch">
+        <label for="withdraw-reason">撤回原因</label>
+        <el-input id="withdraw-reason" v-model.trim="withdrawReason" type="textarea" maxlength="500" />
+        <el-button native-type="submit" :disabled="busy || !withdrawReason">撤回待派单，返回排查</el-button>
+      </form>
       <section v-if="problem.state !== 'resolved' && problem.state !== 'field' && !fieldInProgress" class="callback">
         <h2>回访安排</h2>
         <p v-if="problem.state === 'verify' || problem.resumeState === 'verify'" class="stage-note">待验证问题可以安排回访。选择继续跟进后，问题仍回到待验证。</p>
@@ -172,7 +237,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import logoUrl from './assets/logo-soongo-teal.png'
 import FieldOrders from './components/FieldOrders.vue'
-import { currentAccount, login, logout, addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, linkFieldOrder, loadProblem, lookupDevice, recordFieldResult, scheduleCallback } from './api/workbench'
+import { currentAccount, login, logout, addFollowup, assignableAccounts, claimProblem, createAccount, createProblem, dueCallbacks, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, mineProblems, recordFieldResult, scheduleCallback, setAccountEnabled, withdrawField } from './api/workbench'
 
 const query = ref('')
 const title = ref('')
@@ -200,6 +265,15 @@ const contactedAt = ref('')
 const evidenceSource = ref('')
 const evidence = ref('')
 const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
+const accounts = ref([])
+const assignees = ref([])
+const mine = ref(null)
+const withdrawReason = ref('')
+const handoffTarget = ref('')
+const handoffReason = ref('')
+const newUsername = ref('')
+const newPassword = ref('')
+const newRole = ref('operator')
 
 function orderNumber(item) {
   return item.displayNumber ? 'AS-' + item.displayNumber : item.id
@@ -235,6 +309,7 @@ function signIn() {
   return run(async () => {
     try {
       account.value = await login(username.value, password.value)
+      await loadAccounts()
       await restoreOrder()
     } finally {
       password.value = ''
@@ -253,6 +328,7 @@ onMounted(async () => {
   window.addEventListener('workbench-session-expired', clearAccount)
   try {
     account.value = await currentAccount()
+    await loadAccounts()
   } catch {
     return
   } finally {
@@ -272,16 +348,27 @@ const nextAction = computed(() => {
   return '记录跟进或安排回访'
 })
 
+function ownerLabel(owner) {
+  return !owner || owner === 'early' ? '无主' : owner
+}
+
+function unowned(item) {
+  return !item?.owner || item.owner === 'early'
+}
+
+const canHandoff = computed(() => problem.value && problem.value.state !== 'resolved' && !unowned(problem.value)
+  && (account.value?.role === 'admin' || account.value?.username === problem.value.owner))
+
 function saveFieldLink(number) {
   return run(async () => {
-    await linkFieldOrder(problem.value.id, number)
+    await linkFieldOrder(problem.value.id, number, problem.value.version)
     await showProblem(problem.value.id)
   })
 }
 
 function saveFieldResult(form) {
   return run(async () => {
-    await recordFieldResult(problem.value.id, form)
+    await recordFieldResult(problem.value.id, { ...form, expectedVersion: problem.value.version })
     await showProblem(problem.value.id)
   })
 }
@@ -305,22 +392,89 @@ async function showProblem(id) {
   evidenceSource.value = ''
   evidence.value = ''
   history.replaceState(null, '', '?problem=' + encodeURIComponent(orderId.value))
+  assignees.value = await assignableAccounts()
 }
 
 function openProblem(id) {
   return run(() => showProblem(id))
 }
 
-function refreshDue() {
-  return run(async () => { dueOrders.value = await dueCallbacks() })
+function refreshDue(scope) {
+  return run(async () => {
+    const page = await dueCallbacks(scope)
+    dueOrders.value = page.items || []
+  })
+}
+
+async function loadMine() {
+  const page = await mineProblems()
+  mine.value = page.items || []
+}
+
+function refreshMine() {
+  return run(loadMine)
+}
+
+function withdrawDispatch() {
+  return run(async () => {
+    const id = problem.value.id
+    await withdrawField(id, withdrawReason.value, problem.value.version)
+    withdrawReason.value = ''
+    await showProblem(id)
+  })
+}
+
+function claim() {
+  return run(async () => {
+    const id = problem.value.id
+    await claimProblem(id, problem.value.version)
+    await showProblem(id)
+    if (mine.value) await loadMine()
+  })
+}
+
+function handoff() {
+  return run(async () => {
+    const id = problem.value.id
+    await handoffProblem(id, { target: handoffTarget.value, reason: handoffReason.value, expectedVersion: problem.value.version })
+    handoffReason.value = ''
+    await showProblem(id)
+    if (mine.value) await loadMine()
+  })
+}
+
+async function loadAccounts() {
+  if (account.value?.role !== 'admin') {
+    accounts.value = []
+    return
+  }
+  accounts.value = await listAccounts()
+}
+
+function addAccount() {
+  return run(async () => {
+    await createAccount({ username: newUsername.value, password: newPassword.value, role: newRole.value })
+    newUsername.value = ''
+    newPassword.value = ''
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+  })
+}
+
+function toggleAccount(item) {
+  return run(async () => {
+    await setAccountEnabled(item.username, !item.enabled)
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+  })
 }
 
 function saveSchedule() {
   return run(async () => {
     const id = problem.value.id
-    await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value })
+    await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value, expectedVersion: problem.value.version })
     await showProblem(id)
-    if (dueOrders.value) dueOrders.value = await dueCallbacks()
+    if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
   })
 }
 
@@ -328,9 +482,9 @@ function saveOutcome() {
   return run(async () => {
     const id = problem.value.id
     await finishCallback(id, { outcome: outcome.value, note: result.value, contactedAt: contactedAt.value,
-      evidenceSource: evidenceSource.value || null, evidence: evidence.value || null })
+      evidenceSource: evidenceSource.value || null, evidence: evidence.value || null, expectedVersion: problem.value.version })
     await showProblem(id)
-    if (dueOrders.value) dueOrders.value = await dueCallbacks()
+    if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
   })
 }
 
@@ -375,7 +529,7 @@ function create() {
 function saveNote() {
   return run(async () => {
     const id = problem.value.id
-    await addFollowup(id, note.value)
+    await addFollowup(id, note.value, problem.value.version)
     note.value = ''
     problem.value = await loadProblem(id)
   })
@@ -464,7 +618,8 @@ input[type=datetime-local], select { min-height: 44px; padding: 8px 10px; color:
 .issue-description, .empty-panel, .callback-history article { background: var(--card); padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 .issue-description { margin-bottom: 12px; }
 .empty-panel p { margin: 0; color: var(--muted); }
-.work-list { list-style: none; margin: 8px 0 0; padding: 0; max-block-size: 320px; overflow: auto; overscroll-behavior: contain; }
+.scroll-region { max-inline-size: 100%; max-block-size: 320px; overflow: auto; overscroll-behavior: contain; }
+.work-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .work-list li { border-bottom: 1px solid var(--line); }
 .work-list button, .work-list li { min-height: 48px; }
 .work-list button { width: 100%; padding: 6px 8px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; background: var(--card); color: var(--ink); border: 0; border-inline-start: 3px solid transparent; text-align: start; cursor: pointer; }
@@ -476,9 +631,19 @@ input[type=datetime-local], select { min-height: 44px; padding: 8px 10px; color:
 .login-layout { max-width: 420px; margin: 32px auto; padding: 0 16px; }
 .login-panel { padding: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
 .login-panel .brand-logo { margin-bottom: 12px; }
-@media (max-width: 760px) {
+h1, h2 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
+img { max-inline-size: 100%; block-size: auto; }
+body { overflow-wrap: break-word; }
+html { scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px)); }
+.topbar { padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.workspace { container: workspace / inline-size; }
+@container workspace (inline-size < 720px) {
   .workspace-grid, .facts { grid-template-columns: 1fr; }
-  .topbar { align-items: flex-start; }
-  .brand { flex-wrap: wrap; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .workspace-grid, .facts { grid-template-columns: 1fr; }
+  .topbar, .brand, .account { align-items: flex-start; flex-wrap: wrap; }
+  :where(button, select, .el-button) { min-block-size: 44px; min-inline-size: 44px; }
 }
 </style>

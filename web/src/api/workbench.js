@@ -27,10 +27,16 @@ async function failureMessage(response) {
   return safeServerMessage(payload) || ('请求失败（' + response.status + '）')
 }
 
-async function request(path, body) {
+function requestKey() {
+  return 'ui-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+}
+
+async function request(path, body, key) {
+  const headers = body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': await csrf() }
+  if (key) headers['Idempotency-Key'] = key
   const options = body === undefined ? {} : {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': await csrf() },
+    headers,
     body: JSON.stringify(body)
   }
   const response = await fetch('./api' + path, options)
@@ -46,16 +52,24 @@ async function request(path, body) {
 }
 
 export const lookupDevice = query => request('/devices/lookup?query=' + encodeURIComponent(query))
-export const createProblem = form => request('/problems', form)
+export const createProblem = form => request('/problems', form, requestKey())
 export const loadProblem = id => request('/problems/' + encodeURIComponent(id))
-export const addFollowup = (id, note) => request('/problems/' + encodeURIComponent(id) + '/followups', { note })
+export const addFollowup = (id, note, version) => request('/problems/' + encodeURIComponent(id) + '/followups', { note, expectedVersion: version }, requestKey())
 
 export const findProblems = device => request('/problems?device=' + encodeURIComponent(device))
-export const dueCallbacks = () => request('/problems/due')
-export const scheduleCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback', form)
-export const finishCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback/result', form)
-export const linkFieldOrder = (id, externalNo) => request('/problems/' + encodeURIComponent(id) + '/field-orders', { externalNo })
-export const recordFieldResult = (id, form) => request('/problems/' + encodeURIComponent(id) + '/field-orders/result', form)
+export const dueCallbacks = scope => request('/problems/due?scope=' + encodeURIComponent(scope || 'team') + '&limit=20')
+export const mineProblems = () => request('/problems/mine?limit=20')
+export const scheduleCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback', form, requestKey())
+export const finishCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback/result', form, requestKey())
+export const linkFieldOrder = (id, externalNo, version) => request('/problems/' + encodeURIComponent(id) + '/field-orders', { externalNo, expectedVersion: version }, requestKey())
+export const recordFieldResult = (id, form) => request('/problems/' + encodeURIComponent(id) + '/field-orders/result', form, requestKey())
+export const withdrawField = (id, reason, version) => request('/problems/' + encodeURIComponent(id) + '/field-withdrawal', { reason, expectedVersion: version }, requestKey())
+export const claimProblem = (id, version) => request('/problems/' + encodeURIComponent(id) + '/claim', { expectedVersion: version }, requestKey())
+export const handoffProblem = (id, form) => request('/problems/' + encodeURIComponent(id) + '/handoff', form, requestKey())
+export const listAccounts = () => request('/accounts')
+export const assignableAccounts = () => request('/accounts/assignable')
+export const createAccount = form => request('/accounts', form)
+export const setAccountEnabled = (username, enabled) => request('/accounts/' + encodeURIComponent(username) + '/status', { enabled })
 
 export const currentAccount = () => request('/session')
 

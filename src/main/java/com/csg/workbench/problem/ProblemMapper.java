@@ -20,8 +20,8 @@ public interface ProblemMapper {
         + "VALUES (#{id}, #{actor}, #{action}, #{note})")
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
-    @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState "
-        + "FROM problem WHERE id = #{id}")
+    @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState, "
+        + "owner, version FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
 
     @Select("SELECT id FROM problem WHERE display_number = #{number}")
@@ -33,17 +33,32 @@ public interface ProblemMapper {
     @Select("SELECT id, display_number AS displayNumber, title, device, state FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
     List<Map<String, Object>> findByDevice(@Param("device") String device);
 
-    @Select("SELECT state FROM problem WHERE id = #{id} FOR UPDATE")
-    String lockState(@Param("id") String id);
+    @Select("SELECT state, version, owner FROM problem WHERE id = #{id} FOR UPDATE")
+    Map<String, Object> lockProblem(@Param("id") String id);
 
     @Select("SELECT id, owner, next_step AS nextStep, due_at AS dueAt, due_at <= #{now} AS overdue "
         + "FROM followup WHERE problem_id = #{id} AND state = 'open' ORDER BY id DESC LIMIT 1")
     Map<String, Object> pending(@Param("id") String id, @Param("now") LocalDateTime now);
 
-    @Select("SELECT f.problem_id AS problemId, p.title, f.owner, f.next_step AS nextStep, f.due_at AS dueAt "
+    @Select("SELECT f.id AS followupId, f.problem_id AS problemId, p.display_number AS displayNumber, p.title, p.state, "
+        + "f.owner, f.next_step AS nextStep, f.due_at AS dueAt "
         + "FROM followup f JOIN problem p ON p.id = f.problem_id "
-        + "WHERE f.state = 'open' AND f.due_at <= #{now} ORDER BY f.due_at, f.id LIMIT 50")
-    List<Map<String, Object>> due(@Param("now") LocalDateTime now);
+        + "WHERE f.state = 'open' AND f.due_at <= #{now} "
+        + "AND (#{mine} = 0 OR f.owner = #{actor} OR p.owner = #{actor}) "
+        + "AND (#{cursorId,jdbcType=BIGINT} IS NULL OR f.due_at > #{cursorDue,jdbcType=TIMESTAMP} "
+        + "OR (f.due_at = #{cursorDue,jdbcType=TIMESTAMP} AND f.id > #{cursorId,jdbcType=BIGINT})) "
+        + "ORDER BY f.due_at, f.id LIMIT #{limit}")
+    List<Map<String, Object>> duePage(@Param("now") LocalDateTime now, @Param("mine") int mine,
+                                      @Param("actor") String actor, @Param("cursorDue") LocalDateTime cursorDue,
+                                      @Param("cursorId") Long cursorId, @Param("limit") int limit);
+
+    @Select("SELECT id, display_number AS displayNumber, title, device, state, owner, updated_at AS updatedAt "
+        + "FROM problem WHERE owner = #{actor} AND state <> 'resolved' AND owner <> 'early' "
+        + "AND (#{cursorId,jdbcType=VARCHAR} IS NULL OR updated_at < #{cursorUpdated,jdbcType=TIMESTAMP} "
+        + "OR (updated_at = #{cursorUpdated,jdbcType=TIMESTAMP} AND id < #{cursorId,jdbcType=VARCHAR})) "
+        + "ORDER BY updated_at DESC, id DESC LIMIT #{limit}")
+    List<Map<String, Object>> minePage(@Param("actor") String actor, @Param("cursorUpdated") LocalDateTime cursorUpdated,
+                                       @Param("cursorId") String cursorId, @Param("limit") int limit);
 
     @Insert("INSERT INTO followup (problem_id, owner, next_step, due_at) VALUES (#{id}, #{owner}, #{step}, #{due})")
     void schedule(@Param("id") String id, @Param("owner") String owner,
@@ -52,8 +67,30 @@ public interface ProblemMapper {
     @Update("UPDATE followup SET state = 'done' WHERE problem_id = #{id} AND state = 'open'")
     int completeFollowup(@Param("id") String id);
 
-    @Update("UPDATE problem SET state = #{state}, version = version + 1 WHERE id = #{id}")
-    void changeState(@Param("id") String id, @Param("state") String state);
+    @Update("UPDATE problem SET state = #{state}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int changeState(@Param("id") String id, @Param("state") String state, @Param("version") int version);
+
+    @Update("UPDATE problem SET owner = #{owner}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int assignOwner(@Param("id") String id, @Param("owner") String owner, @Param("version") int version);
+
+    @Insert("INSERT IGNORE INTO command_log (request_id, digest, problem_id) VALUES (#{requestId}, #{digest}, #{problemId})")
+    int insertCommandIfAbsent(@Param("requestId") String requestId, @Param("digest") String digest,
+                              @Param("problemId") String problemId);
+
+    @Select("SELECT digest FROM command_log WHERE request_id = #{requestId}")
+    String commandDigest(@Param("requestId") String requestId);
+
+    @Select("SELECT problem_id FROM command_log WHERE request_id = #{requestId}")
+    String commandProblem(@Param("requestId") String requestId);
+
+    @Insert("INSERT INTO ownership_event (problem_id, actor, from_owner, to_owner, action, reason) "
+        + "VALUES (#{id}, #{actor}, #{fromOwner}, #{toOwner}, #{action}, #{reason})")
+    void insertOwnership(@Param("id") String id, @Param("actor") String actor, @Param("fromOwner") String fromOwner,
+                         @Param("toOwner") String toOwner, @Param("action") String action, @Param("reason") String reason);
+
+    @Select("SELECT actor, from_owner AS fromOwner, to_owner AS toOwner, action, reason, created_at AS createdAt "
+        + "FROM ownership_event WHERE problem_id = #{id} ORDER BY id")
+    List<Map<String, Object>> ownershipEvents(@Param("id") String id);
 
     @Select("SELECT resume_state FROM problem WHERE id = #{id}")
     String resumeState(@Param("id") String id);

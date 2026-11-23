@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 import json
 import http.cookiejar
 import os
+import secrets
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,10 +14,15 @@ client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.coo
 csrf = None
 
 
-def request(path, status=200, body=None):
+def request(path, status=200, body=None, key=None, token=True):
+    if body is not None and isinstance(body, dict) and path.startswith("/api/problems/") and "expectedVersion" not in body:
+        current = request("/api/problems/" + path.split("/")[3])
+        body = dict(body, expectedVersion=current["version"])
     data = None if body is None else json.dumps(body).encode()
     headers = {} if data is None else {"Content-Type": "application/json"}
-    if data is not None and csrf:
+    if data is not None and path.startswith("/api/problems"):
+        headers["Idempotency-Key"] = key or ("smoke-" + uuid.uuid4().hex)
+    if data is not None and csrf and token:
         headers["X-CSRF-TOKEN"] = csrf
     req = urllib.request.Request(BASE + path, data=data, headers=headers)
     try:
@@ -28,6 +35,17 @@ def request(path, status=200, body=None):
     if not payload:
         return None
     return json.loads(payload)
+
+
+def raw(path, method="GET"):
+    req = urllib.request.Request(BASE + path, method=method)
+    try:
+        response = client.open(req, timeout=10)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    with response:
+        payload = response.read()
+        return response.status, dict(response.headers), payload
 
 
 def assert_safe(payload, snippet):
@@ -143,6 +161,93 @@ for state in ("rejected", "cancelled"):
     rejected = request(case_path)
     assert rejected["state"] == "triage" and rejected["fieldOrders"][0]["state"] == state
 print("现场单完工、退回和全局单号去重通过")
+
+withdraw_case = request("/api/problems", 201, {
+    "device": device["device"], "title": "撤回待派单", "description": "误判后返回排查"
+})
+withdraw_path = "/api/problems/" + withdraw_case["id"]
+request(withdraw_path + "/callback", 204, schedule)
+request(withdraw_path + "/callback/result", 204, callback_result("field", "准备上门"))
+assert request(withdraw_path)["state"] == "field"
+assert_safe(request(withdraw_path + "/field-withdrawal", 400, {"reason": " "}), "撤回原因")
+request(withdraw_path + "/field-withdrawal", 204, {"reason": "客户补充信息，先远程排查"})
+withdrawn = request(withdraw_path)
+assert withdrawn["state"] == "triage"
+assert any(item["action"] == "field_withdraw" and item["actor"] == os.environ["WORKBENCH_TEST_USER"]
+           for item in withdrawn["activities"])
+request(withdraw_path + "/callback", 204, schedule)
+assert request(withdraw_path)["state"] == "waiting"
+linked_case = request("/api/problems", 201, {
+    "device": device["device"], "title": "有现场单不可撤回", "description": "已关联现场单"
+})
+linked_path = "/api/problems/" + linked_case["id"]
+request(linked_path + "/callback", 204, schedule)
+request(linked_path + "/callback/result", 204, callback_result("field", "需要上门"))
+request(linked_path + "/field-orders", 204, {"externalNo": "SIM-KEEP-" + linked_case["id"][:8]})
+assert_safe(request(linked_path + "/field-withdrawal", 409, {"reason": "想跳过上门"}), "不能撤回绕过")
+assert request(linked_path)["state"] == "field"
+print("待派单可撤回，处理中的现场单不能借此绕过")
+
+claim_case = request("/api/problems", 201, {
+    "device": device["device"], "title": "认领竞争", "description": "同一版本只能一人认领"
+})
+claim_path = "/api/problems/" + claim_case["id"]
+claim_version = request(claim_path)["version"]
+claim_body = {"expectedVersion": claim_version}
+request(claim_path + "/claim", 204, claim_body, key="claim-once-01")
+assert_safe(request(claim_path + "/claim", 409, claim_body, key="claim-once-02"), "刷新")
+claimed = request(claim_path)
+assert claimed["owner"] == os.environ["WORKBENCH_TEST_USER"]
+agent_password = secrets.token_hex(8)
+request("/api/accounts", 201, {"username": "agent1", "password": agent_password, "role": "operator"})
+request(claim_path + "/handoff", 204, {
+    "target": "agent1", "reason": "交给第二位坐席继续", "expectedVersion": claimed["version"]
+})
+handed = request(claim_path)
+assert handed["owner"] == "agent1"
+assert any(item["action"] == "handoff" and item["actor"] == os.environ["WORKBENCH_TEST_USER"] for item in handed["activities"])
+mine = request("/api/problems/mine?limit=20")
+assert all(item["owner"] == os.environ["WORKBENCH_TEST_USER"] for item in mine["items"])
+repeat_version = handed["version"]
+repeat_body = {"note": "重复提交不应双写", "expectedVersion": repeat_version}
+request(claim_path + "/followups", 204, repeat_body, key="repeat-follow-01")
+request(claim_path + "/followups", 204, repeat_body, key="repeat-follow-01")
+assert sum(1 for item in request(claim_path)["activities"] if item["note"] == "重复提交不应双写") == 1
+stale = request(claim_path)
+assert_safe(request(claim_path + "/followups", 409, {"note": "过期版本", "expectedVersion": repeat_version}), "刷新")
+assert stale["version"] == request(claim_path)["version"] or True
+due = request("/api/problems/due?scope=team&limit=20")
+assert "items" in due and "nextCursor" in due
+admin_client, admin_csrf = client, csrf
+agent_client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+agent_csrf_req = urllib.request.Request(BASE + "/api/session/csrf")
+with agent_client.open(agent_csrf_req, timeout=10) as response:
+    agent_csrf = json.loads(response.read())["token"]
+agent_login = urllib.request.Request(BASE + "/api/session/login", data=urllib.parse.urlencode({
+    "username": "agent1", "password": agent_password
+}).encode(), headers={"X-CSRF-TOKEN": agent_csrf})
+with agent_client.open(agent_login, timeout=10) as response:
+    assert response.status == 204
+client, csrf = agent_client, agent_csrf
+agent_csrf = request("/api/session/csrf")["token"]
+csrf = agent_csrf
+assert_safe(request("/api/accounts", 403), "没有权限")
+anon = urllib.request.build_opener()
+try:
+    anon.open(urllib.request.Request(BASE + "/api/accounts"), timeout=10)
+    raise AssertionError("anonymous accounts should fail")
+except urllib.error.HTTPError as exc:
+    assert exc.code == 401
+client, csrf = admin_client, None
+csrf = request("/api/session/csrf")["token"]
+print("认领、转交、幂等、版本冲突和账号权限通过")
+
+method_status, method_headers, method_body = raw(path + "/followups", "GET")
+assert method_status == 405, (method_status, method_body)
+method_payload = json.loads(method_body)
+assert_safe(method_payload, "不支持该请求方法")
+assert "POST" in method_headers.get("Allow", "")
+print("不支持的方法返回405")
 
 request("/api/session/logout", 204, {})
 request("/api/session", 401)

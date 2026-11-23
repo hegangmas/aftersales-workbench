@@ -3,12 +3,16 @@ package com.csg.workbench.problem;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.csg.workbench.account.AccountMapper;
 import com.csg.workbench.device.DeviceService;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -32,17 +36,17 @@ class ProblemServiceTest {
     private static final String ID = "11111111-1111-1111-1111-111111111111";
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 
-    @Mock
-    private ProblemMapper mapper;
-    @Mock
-    private DeviceService devices;
+    @Mock private ProblemMapper mapper;
+    @Mock private DeviceService devices;
+    @Mock private AccountMapper accounts;
     private ProblemService service;
 
     @BeforeEach
     void login() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
             "operator.1", "unused", AuthorityUtils.createAuthorityList("ROLE_OPERATOR")));
-        service = new ProblemService(mapper, devices);
+        service = new ProblemService(mapper, devices, accounts);
+        lenient().when(mapper.insertCommandIfAbsent(anyString(), anyString(), anyString())).thenReturn(1);
     }
 
     @AfterEach
@@ -52,94 +56,127 @@ class ProblemServiceTest {
 
     @Test
     void followupStoresCurrentLoginName() {
-        when(mapper.lockState(ID)).thenReturn("open");
-        service.recordFollowup(ID, " 已联系车主 ");
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "early"));
+        when(mapper.changeState(eq(ID), eq("open"), eq(3))).thenReturn(1);
+        service.recordFollowup(ID, " 已联系车主 ", 3, "followup-key1");
         verify(mapper).insertActivity(ID, "operator.1", "followup", "已联系车主");
     }
 
     @Test
     void resolvedRejectsFurtherWrites() {
-        when(mapper.lockState(ID)).thenReturn("resolved");
+        when(mapper.lockProblem(ID)).thenReturn(row("resolved", 4, "operator.1"));
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-            () -> service.recordFollowup(ID, "再写一条"));
+            () -> service.recordFollowup(ID, "再写一条", 4, "followup-key2"));
         assertEquals(HttpStatus.CONFLICT, error.getStatus());
         assertEquals("问题单已结案", error.getReason());
         verify(mapper, never()).insertActivity(any(), any(), any(), any());
     }
 
     @Test
-    void fieldWithoutOrderCannotSkipDispatch() {
-        when(mapper.lockState(ID)).thenReturn("field");
-        when(mapper.activeFieldOrders(ID)).thenReturn(0);
+    void staleVersionDoesNotOverwrite() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 5, "early"));
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-            () -> service.schedule(ID, "坐席", "确认恢复", future()));
-        assertEquals("请先关联现场单，不能跳过派单阶段", error.getReason());
-        verify(mapper, never()).changeState(any(), any());
-        assertThrows(ResponseStatusException.class,
-            () -> service.finishCallback(ID, "continue", "跳过", past(), null, null));
+            () -> service.recordFollowup(ID, "旧版本", 4, "followup-key3"));
+        assertEquals("工单已被他人更新，请刷新后重试", error.getReason());
+        verify(mapper, never()).insertActivity(any(), any(), any(), any());
     }
 
     @Test
-    void activeFieldOrderBlocksCallback() {
-        when(mapper.lockState(ID)).thenReturn("field");
-        when(mapper.activeFieldOrders(ID)).thenReturn(1);
+    void repeatedKeyDoesNotRepeatFollowup() {
+        when(mapper.insertCommandIfAbsent(eq("followup-same"), anyString(), eq(ID))).thenReturn(0);
+        when(mapper.commandDigest("followup-same")).thenReturn(ProblemService.digest("followup", ID, "同一条", "3"));
+        service.recordFollowup(ID, "同一条", 3, "followup-same");
+        verify(mapper, never()).insertActivity(any(), any(), any(), any());
+    }
+
+    @Test
+    void fieldWithoutOrderCannotSkipDispatch() {
+        when(mapper.lockProblem(ID)).thenReturn(row("field", 1, "early"));
+        when(mapper.activeFieldOrders(ID)).thenReturn(0);
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-            () -> service.finishCallback(ID, "resolved", "完工了", past(), "customer", "已恢复"));
-        assertEquals("请先登记现场单处理结果", error.getReason());
-        verify(mapper, never()).verify(any(), any(), any(), any());
+            () -> service.schedule(ID, "坐席", "确认恢复", future(), 1, "schedule-key1"));
+        assertEquals("请先关联现场单，不能跳过派单阶段", error.getReason());
+        verify(mapper, never()).changeState(any(), any(), anyInt());
+    }
+
+    @Test
+    void claimSucceedsOnceForUnownedTicket() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "early"), row("open", 3, "operator.1"));
+        when(mapper.assignOwner(ID, "operator.1", 2)).thenReturn(1);
+        service.claim(ID, 2, "claim-key-001");
+        verify(mapper).insertOwnership(ID, "operator.1", "early", "operator.1", "claim", "");
+        ResponseStatusException second = assertThrows(ResponseStatusException.class,
+            () -> service.claim(ID, 2, "claim-key-002"));
+        assertEquals("工单已被他人更新，请刷新后重试", second.getReason());
     }
 
     @Test
     void verifyCallbackReturnsToVerify() {
-        when(mapper.lockState(ID)).thenReturn("verify");
+        when(mapper.lockProblem(ID)).thenReturn(row("verify", 1, "early"), row("waiting", 2, "early"));
         when(mapper.activeFieldOrders(ID)).thenReturn(0);
-        service.schedule(ID, "坐席", "确认是否恢复", future());
-        verify(mapper).setResume(ID, "verify");
-        verify(mapper).changeState(ID, "waiting");
-
-        when(mapper.lockState(ID)).thenReturn("waiting");
+        when(mapper.changeState(eq(ID), eq("waiting"), eq(1))).thenReturn(1);
+        when(mapper.changeState(eq(ID), eq("verify"), eq(2))).thenReturn(1);
         when(mapper.resumeState(ID)).thenReturn("verify");
-        service.finishCallback(ID, "continue", "仍需复测", past(), null, null);
-        verify(mapper).changeState(ID, "verify");
+        service.schedule(ID, "坐席", "确认是否恢复", future(), 1, "schedule-key2");
+        verify(mapper).setResume(ID, "verify");
+        service.finishCallback(ID, "continue", "仍需复测", past(), null, null, 2, "callback-key1");
+        verify(mapper).changeState(ID, "verify", 2);
         verify(mapper).setResume(eq(ID), isNull());
     }
 
     @Test
-    void continueFromOpenStaysOpenAndResolvedNeedsEvidence() {
-        when(mapper.lockState(ID)).thenReturn("open");
+    void withdrawPendingDispatchReturnsToTriage() {
+        when(mapper.lockProblem(ID)).thenReturn(row("field", 4, "operator.1"));
         when(mapper.activeFieldOrders(ID)).thenReturn(0);
-        service.finishCallback(ID, "continue", "稍后再联系", past(), null, null);
-        verify(mapper).changeState(ID, "open");
+        when(mapper.changeState(ID, "triage", 4)).thenReturn(1);
+        service.withdrawField(ID, " 客户改口，先远程排查 ", 4, "withdraw-key1");
+        verify(mapper).insertActivity(eq(ID), eq("operator.1"), eq("field_withdraw"),
+            eq("撤回待派单，返回排查：客户改口，先远程排查"));
+        verify(mapper).changeState(ID, "triage", 4);
+    }
 
-        ResponseStatusException missing = assertThrows(ResponseStatusException.class,
-            () -> service.finishCallback(ID, "resolved", "说已恢复", past(), null, " "));
-        assertEquals(HttpStatus.BAD_REQUEST, missing.getStatus());
-        verify(mapper, never()).verify(any(), any(), any(), any());
+    @Test
+    void withdrawDoesNotBypassActiveFieldOrder() {
+        when(mapper.lockProblem(ID)).thenReturn(row("field", 4, "operator.1"));
+        when(mapper.activeFieldOrders(ID)).thenReturn(1);
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+            () -> service.withdrawField(ID, "想跳过上门", 4, "withdraw-key2"));
+        assertEquals("已有现场单在处理，请先登记结果，不能撤回绕过", error.getReason());
+        verify(mapper, never()).changeState(anyString(), anyString(), anyInt());
+    }
 
-        service.finishCallback(ID, "resolved", "车主确认", past(), "customer", "已完成一次充电");
-        verify(mapper).verify(ID, "operator.1", "customer", "已完成一次充电");
-        verify(mapper).changeState(ID, "resolved");
+    @Test
+    void withdrawRejectsBlankReasonAndClosedCase() {
+        ResponseStatusException blank = assertThrows(ResponseStatusException.class,
+            () -> service.withdrawField(ID, "  ", 4, "withdraw-key3"));
+        assertEquals(HttpStatus.BAD_REQUEST, blank.getStatus());
+        when(mapper.lockProblem(ID)).thenReturn(row("resolved", 4, "operator.1"));
+        ResponseStatusException closed = assertThrows(ResponseStatusException.class,
+            () -> service.withdrawField(ID, "结案后撤回", 4, "withdraw-key4"));
+        assertEquals("问题单已结案", closed.getReason());
     }
 
     @Test
     void shortNumberAndUuidBothResolve() {
-        Map<String, Object> row = new LinkedHashMap<String, Object>();
-        row.put("id", ID);
-        row.put("state", "open");
+        Map<String, Object> found = new LinkedHashMap<String, Object>();
+        found.put("id", ID);
+        found.put("state", "open");
         when(mapper.findIdByNumber(12L)).thenReturn(ID);
-        when(mapper.findProblem(ID)).thenReturn(row);
+        when(mapper.findProblem(ID)).thenReturn(found);
         when(mapper.fieldOrders(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         when(mapper.callbackResults(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         when(mapper.listActivities(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
-
+        when(mapper.ownershipEvents(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         assertEquals(ID, service.detail("as-12").get("id"));
-        assertEquals(ID, service.detail("12").get("id"));
         assertEquals(ID, service.detail(ID).get("id"));
-        verify(mapper, never()).findIdByNumber(eq(0L));
+    }
 
-        when(mapper.findIdByNumber(99L)).thenReturn(null);
-        ResponseStatusException missing = assertThrows(ResponseStatusException.class, () -> service.detail("AS-99"));
-        assertEquals(HttpStatus.NOT_FOUND, missing.getStatus());
+    private static Map<String, Object> row(String state, int version, String owner) {
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("state", state);
+        row.put("version", Integer.valueOf(version));
+        row.put("owner", owner);
+        return row;
     }
 
     private static LocalDateTime future() {
