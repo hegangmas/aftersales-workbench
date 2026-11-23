@@ -55,9 +55,37 @@ assert request(path)["state"] == "open"
 request(callback, 204, schedule)
 request(callback + "/result", 204, {"outcome": "field", "note": "模拟现场检测"})
 assert request(path)["state"] == "field"
+field = path + "/field-orders"
+number = "SIM-" + created["id"]
+request(field, 204, {"externalNo": number})
+request(field, 409, {"externalNo": number})
+request(callback, 409, schedule)
+request(field + "/result", 204, {"externalNo": number, "state": "in_progress", "receipt": "模拟接单"})
+request(field + "/result", 204, {"externalNo": number, "state": "complete", "receipt": "模拟现场复测完成"})
+field_detail = request(path)
+assert field_detail["state"] == "verify"
+assert field_detail["fieldOrders"][0]["state"] == "complete"
+request(field + "/result", 409, {"externalNo": number, "state": "cancelled", "receipt": "完工后禁止改写"})
 request(callback, 204, schedule)
 request(callback + "/result", 204, {"outcome": "resolved", "note": "模拟车主确认已恢复充电"})
 final = request(path)
 assert final["state"] == "resolved" and final["pendingFollowup"] is None
 request(callback, 409, schedule)
 print("回访三种去向、事务回滚与已结案保护通过")
+
+for state in ("rejected", "cancelled"):
+    new_case = request("/api/problems", 201, {
+        "device": device["device"], "title": "现场单回归 " + state, "description": "模拟故障"
+    })
+    case_path = "/api/problems/" + new_case["id"]
+    request(case_path + "/callback", 204, schedule)
+    request(case_path + "/callback/result", 204, {"outcome": "field", "note": "模拟现场检测"})
+    case_number = "SIM-" + new_case["id"]
+    request(case_path + "/field-orders", 409, {"externalNo": number})
+    request(case_path + "/field-orders", 204, {"externalNo": case_number})
+    request(case_path + "/field-orders/result", 204, {
+        "externalNo": case_number, "state": state, "receipt": "模拟现场单终止原因"
+    })
+    rejected = request(case_path)
+    assert rejected["state"] == "triage" and rejected["fieldOrders"][0]["state"] == state
+print("现场单完工、退回和全局单号去重通过")

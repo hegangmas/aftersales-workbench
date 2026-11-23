@@ -58,6 +58,27 @@ public class ProblemController {
         problems.finishCallback(id, request.outcome, request.note);
     }
 
+    @PostMapping("/{id}/field-orders")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void linkFieldOrder(@PathVariable String id, @Valid @RequestBody FieldLink request) {
+        problems.linkFieldOrder(id, request.externalNo);
+    }
+
+    @PostMapping("/{id}/field-orders/result")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void recordFieldResult(@PathVariable String id, @Valid @RequestBody FieldResult request) {
+        problems.recordFieldResult(id, request.externalNo.trim(), request.state, request.receipt);
+    }
+
+    public static class FieldLink {
+        @NotBlank @Size(max = 64) public String externalNo;
+    }
+
+    public static class FieldResult extends FieldLink {
+        @NotBlank @Size(max = 20) public String state;
+        @NotBlank @Size(max = 700) public String receipt;
+    }
+
     public static class Schedule {
         @NotBlank @Size(max = 20) public String owner;
         @NotBlank @Size(max = 500) public String nextStep;

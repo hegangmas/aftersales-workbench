@@ -18,3 +18,5 @@ export const findProblems = device => request('/problems?device=' + encodeURICom
 export const dueCallbacks = () => request('/problems/due')
 export const scheduleCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback', form)
 export const finishCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback/result', form)
+export const linkFieldOrder = (id, externalNo) => request('/problems/' + encodeURIComponent(id) + '/field-orders', { externalNo })
+export const recordFieldResult = (id, form) => request('/problems/' + encodeURIComponent(id) + '/field-orders/result', form)

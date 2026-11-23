@@ -53,4 +53,18 @@ public interface ProblemMapper {
 
     @Insert("INSERT INTO verification (problem_id, actor, source, evidence) VALUES (#{id}, 'early', 'customer', #{note})")
     void verify(@Param("id") String id, @Param("note") String note);
+
+    @Select("SELECT external_no AS externalNo, state, receipt FROM field_order WHERE problem_id = #{id} ORDER BY id DESC")
+    List<Map<String, Object>> fieldOrders(@Param("id") String id);
+
+    @Select("SELECT COUNT(*) FROM field_order WHERE problem_id = #{id} AND state IN ('linked', 'in_progress')")
+    int activeFieldOrders(@Param("id") String id);
+
+    @Insert("INSERT INTO field_order (problem_id, external_no, state, receipt) VALUES (#{id}, #{number}, 'linked', '')")
+    void linkFieldOrder(@Param("id") String id, @Param("number") String number);
+
+    @Update("UPDATE field_order SET state = #{state}, receipt = #{receipt} WHERE problem_id = #{id} "
+        + "AND external_no = #{number} AND state IN ('linked', 'in_progress') AND state <> #{state}")
+    int updateFieldOrder(@Param("id") String id, @Param("number") String number,
+                         @Param("state") String state, @Param("receipt") String receipt);
 }

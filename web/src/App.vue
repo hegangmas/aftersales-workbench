@@ -55,7 +55,9 @@
         <el-input id="note" v-model.trim="note" type="textarea" maxlength="1500" />
         <el-button native-type="submit" type="primary" :disabled="busy || !note">保存跟进</el-button>
       </form>
-      <section v-if="problem.state !== 'resolved'" class="callback">
+      <FieldOrders :key="problem.id + ':' + (problem.fieldOrders?.[0]?.state || '')"
+        :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
+      <section v-if="problem.state !== 'resolved' && !fieldInProgress" class="callback">
         <h2>回访安排</h2>
         <p v-if="problem.pendingFollowup">
           {{ problem.pendingFollowup.overdue ? '已到期' : '待回访' }} ·
@@ -90,8 +92,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, loadProblem, lookupDevice, scheduleCallback } from './api/workbench'
+import { computed, ref } from 'vue'
+import FieldOrders from './components/FieldOrders.vue'
+import { addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, linkFieldOrder, loadProblem, lookupDevice, recordFieldResult, scheduleCallback } from './api/workbench'
 
 const query = ref('')
 const title = ref('')
@@ -109,9 +112,24 @@ const dueAt = ref('')
 const nextStep = ref('')
 const outcome = ref('continue')
 const result = ref('')
+const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
+
+function saveFieldLink(number) {
+  return run(async () => {
+    await linkFieldOrder(problem.value.id, number)
+    await showProblem(problem.value.id)
+  })
+}
+
+function saveFieldResult(form) {
+  return run(async () => {
+    await recordFieldResult(problem.value.id, form)
+    await showProblem(problem.value.id)
+  })
+}
 
 function statusLabel(state) {
-  return { open: '处理中', waiting: '待回访', field: '待现场派单', resolved: '已结案' }[state] || state
+  return { open: '处理中', waiting: '待回访', field: '现场服务', verify: '待验证', triage: '待排查', resolved: '已结案' }[state] || state
 }
 
 async function showProblem(id) {

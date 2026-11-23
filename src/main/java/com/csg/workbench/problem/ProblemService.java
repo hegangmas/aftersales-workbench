@@ -6,6 +6,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class ProblemService {
     public Map<String, Object> detail(String id) {
         Map<String, Object> problem = requireProblem(id);
         problem.put("pendingFollowup", mapper.pending(id, LocalDateTime.now(BUSINESS_ZONE)));
+        problem.put("fieldOrders", mapper.fieldOrders(id));
         problem.put("activities", mapper.listActivities(id));
         return problem;
     }
@@ -56,6 +58,9 @@ public class ProblemService {
     @Transactional
     public void schedule(String id, String owner, String step, LocalDateTime due) {
         lockActive(id);
+        if (mapper.activeFieldOrders(id) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
+        }
         if (due == null || !due.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择未来的回访时间");
         }
@@ -91,7 +96,41 @@ public class ProblemService {
         }
     }
 
-    private void lockActive(String id) {
+    @Transactional
+    public void linkFieldOrder(String id, String number) {
+        if (!"field".equals(lockActive(id)) || mapper.activeFieldOrders(id) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "仅待现场派单的问题可关联一张现场单");
+        }
+        try {
+            mapper.linkFieldOrder(id, number.trim());
+        } catch (DuplicateKeyException duplicate) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "现场单号已关联");
+        }
+        mapper.insertActivity(id, "field_link", "人工关联智享乐装现场单：" + number.trim());
+    }
+
+    @Transactional
+    public void recordFieldResult(String id, String number, String state, String receipt) {
+        if (!"field".equals(lockActive(id))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "当前问题未处于现场服务阶段");
+        }
+        String label;
+        String next;
+        switch (state) {
+            case "in_progress": label = "处理中"; next = "field"; break;
+            case "complete": label = "完工"; next = "verify"; break;
+            case "rejected": label = "拒单"; next = "triage"; break;
+            case "cancelled": label = "取消"; next = "triage"; break;
+            default: throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "未知现场单结果");
+        }
+        if (mapper.updateFieldOrder(id, number, state, receipt.trim()) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "现场单不可更新");
+        }
+        mapper.changeState(id, next);
+        mapper.insertActivity(id, "field_update", "人工登记智享乐装回执 " + number + " · " + label + "：" + receipt.trim());
+    }
+
+    private String lockActive(String id) {
         String state = mapper.lockState(id);
         if (state == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "问题单不存在");
@@ -99,6 +138,7 @@ public class ProblemService {
         if ("resolved".equals(state)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "问题单已结案");
         }
+        return state;
     }
 
     private Map<String, Object> requireProblem(String id) {
