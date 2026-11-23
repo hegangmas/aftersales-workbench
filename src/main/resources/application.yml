@@ -1,0 +1,13 @@
+server:
+  address: 127.0.0.1
+  port: ${PORT:8780}
+spring:
+  datasource:
+    url: ${WORKBENCH_DB_URL:jdbc:mysql://127.0.0.1:3306/soongo_aftersales_java}
+    username: ${WORKBENCH_DB_USER}
+    password: ${WORKBENCH_DB_PASSWORD}
+  flyway:
+    clean-disabled: true
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true

@@ -1,0 +1,7 @@
+{
+  "name": "aftersales-workbench",
+  "private": true,
+  "scripts": {"serve": "vue-cli-service serve", "build": "vue-cli-service build"},
+  "dependencies": {"vue": "3.5.13", "element-plus": "2.9.1"},
+  "devDependencies": {"@vue/cli-service": "5.0.8"}
+}
