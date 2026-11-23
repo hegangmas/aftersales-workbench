@@ -1,13 +1,17 @@
 <template>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark">S</span><strong>售后工作台</strong><span class="env-chip">试用环境</span></div>
+      <div class="brand">
+        <img class="brand-logo" :src="logoUrl" alt="松果" width="90" height="32">
+        <strong>售后工作台</strong>
+        <span class="env-chip">模拟数据</span>
+      </div>
       <div v-if="account" class="account"><span>{{ account.username }}</span><button type="button" @click="signOut">退出</button></div>
     </header>
     <main v-if="authReady && !account" class="login-layout">
-      <section class="login-cover"><span class="cover-mark">S</span><h1>售后工作台</h1><p>设备查询、问题受理与回访</p></section>
       <section class="login-panel">
-        <h2>账号登录</h2>
+        <h1>账号登录</h1>
+        <p class="sim-note">模拟数据 · 未连接生产系统</p>
         <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
           <el-alert :title="error" type="error" :closable="false" show-icon />
         </div>
@@ -21,13 +25,13 @@
       </section>
     </main>
     <main v-if="account" class="workspace">
-      <div class="page-heading"><h1>问题处理</h1><span>模拟数据 · 未连接生产系统</span></div>
+      <div class="page-heading"><h1>问题处理</h1><p>模拟数据 · 未连接生产系统</p></div>
       <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
         <el-alert :title="error" type="error" :closable="false" show-icon />
       </div>
       <div class="workspace-grid">
-        <aside class="sidebar">
-    <el-card header="问题单与回访待办">
+        <aside class="sidebar" aria-label="问题与设备">
+    <el-card header="问题单与回访">
       <form @submit.prevent="openProblem(orderId)">
         <label for="order-id">问题单号</label>
         <el-input id="order-id" v-model.trim="orderId" placeholder="例如 AS-12" />
@@ -35,10 +39,12 @@
       </form>
       <el-button class="section-button" :disabled="busy" @click="refreshDue">查看到期回访</el-button>
       <p v-if="dueOrders && !dueOrders.length">当前没有到期回访</p>
-      <ul v-if="dueOrders">
+      <ul v-if="dueOrders" class="work-list">
         <li v-for="item in dueOrders" :key="item.problemId">
-          <button type="button" @click="openProblem(item.problemId)">{{ item.title }}</button>
-          {{ item.owner }} · {{ item.dueAt }} · {{ item.nextStep }}
+          <button type="button" :aria-current="problem?.id === item.problemId ? 'true' : undefined" @click="openProblem(item.problemId)">
+            <span class="row-title">{{ item.title }}</span>
+            <span class="row-meta">{{ item.owner }} · {{ item.dueAt }} · {{ item.nextStep }}</span>
+          </button>
         </li>
       </ul>
     </el-card>
@@ -52,10 +58,12 @@
         <h2>{{ device.device }}</h2>
         <p>{{ device.fault }}</p>
         <p>{{ device.source }} · {{ device.observedAt }}</p>
-        <ul v-if="deviceOrders.length">
+        <ul v-if="deviceOrders.length" class="work-list">
           <li v-for="item in deviceOrders" :key="item.id">
-            <button type="button" @click="openProblem(item.id)">{{ item.title }}</button>
-            {{ statusLabel(item.state) }}
+            <button type="button" :aria-current="problem?.id === item.id ? 'true' : undefined" @click="openProblem(item.id)">
+              <span class="row-title">{{ orderNumber(item) }} · {{ item.title }}</span>
+              <span class="row-meta">{{ item.device }} · {{ statusLabel(item.state) }}</span>
+            </button>
           </li>
         </ul>
       </section>
@@ -75,9 +83,16 @@
         <el-button native-type="submit" type="primary" :disabled="busy || !title || !description">创建问题单</el-button>
       </form>
     </el-card>
-    <el-card v-if="problem" :header="problem.title">
-      <div class="issue-meta"><span class="status-chip">{{ statusLabel(problem.state) }}</span><span>{{ problem.device }}</span></div>
-      <p class="issue-id">问题单 {{ orderNumber(problem) }}</p>
+    <el-card v-if="problem">
+      <header class="issue-head">
+        <p class="issue-kicker">问题单 <strong>{{ orderNumber(problem) }}</strong></p>
+        <h2 class="issue-title">{{ problem.title }}</h2>
+        <dl class="facts">
+          <div><dt>桩编码</dt><dd>{{ problem.device }}</dd></div>
+          <div><dt>状态</dt><dd><span class="status-chip" :data-state="problem.state">{{ statusLabel(problem.state) }}</span></dd></div>
+          <div><dt>下一步</dt><dd>{{ nextAction }}</dd></div>
+        </dl>
+      </header>
       <p class="issue-description">{{ problem.description }}</p>
       <h2>处理记录</h2>
       <ol class="timeline">
@@ -155,6 +170,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import logoUrl from './assets/logo-soongo-teal.png'
 import FieldOrders from './components/FieldOrders.vue'
 import { currentAccount, login, logout, addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, linkFieldOrder, loadProblem, lookupDevice, recordFieldResult, scheduleCallback } from './api/workbench'
 
@@ -246,6 +262,15 @@ onMounted(async () => {
 })
 onUnmounted(() => window.removeEventListener('workbench-session-expired', clearAccount))
 const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
+const nextAction = computed(() => {
+  const current = problem.value
+  if (!current) return ''
+  if (current.state === 'resolved') return '已结案，不再写入'
+  if (current.state === 'field') return '关联或登记智享乐装现场单'
+  if (current.pendingFollowup?.nextStep) return current.pendingFollowup.nextStep
+  if (current.state === 'verify' || current.resumeState === 'verify') return '安排回访或提交恢复依据'
+  return '记录跟进或安排回访'
+})
 
 function saveFieldLink(number) {
   return run(async () => {
@@ -358,54 +383,102 @@ function saveNote() {
 </script>
 
 <style>
-:root { color-scheme: light; --ink: #172d42; --muted: #566b7d; --surface: #fff; --accent: #087e79; --line: #dbe6eb; --el-color-primary: #087e79; }
+:root {
+  color-scheme: light;
+  --brand: #006072;
+  --brand-deep: #0B5869;
+  --canvas: #F4F8F9;
+  --card: #fff;
+  --ink: #1A2B30;
+  --muted: #5B6E74;
+  --line: #D5E3E6;
+  --selected: #E8F2F4;
+  --ok: #2E7D4F;
+  --warn: #8F6A00;
+  --danger: #C0362C;
+  --el-color-primary: #006072;
+  --el-color-primary-light-3: #4d909c;
+  --el-color-primary-light-5: #80b0b9;
+  --el-color-primary-light-7: #b3d0d5;
+  --el-color-primary-light-8: #cce0e3;
+  --el-color-primary-light-9: #E8F2F4;
+  --el-color-primary-dark-2: #0B5869;
+  --el-color-success: #2E7D4F;
+  --el-color-warning: #8F6A00;
+  --el-color-danger: #C0362C;
+  --el-color-error: #C0362C;
+  --el-text-color-primary: #1A2B30;
+  --el-text-color-regular: #1A2B30;
+  --el-text-color-secondary: #5B6E74;
+  --el-border-color: #D5E3E6;
+  --el-border-radius-base: 6px;
+  --el-font-family: "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif;
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: #edf3f5; color: var(--ink); font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--el-font-family); }
 h1, h2, p { margin-top: 0; }
-h1 { letter-spacing: -.035em; }
-h2 { font-size: 16px; }
-.topbar { height: 68px; padding: 0 clamp(16px, 4vw, 52px); display: flex; align-items: center; justify-content: space-between; background: #122b3c; color: white; }
-.brand, .account { display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 32px; height: 32px; display: grid; place-items: center; background: #48d7b8; color: #102d3f; border-radius: 9px; font-weight: 850; }
-.env-chip { color: #bdede2; border: 1px solid #41616e; border-radius: 100px; font-size: 12px; padding: 3px 8px; }
-.account button { background: transparent; color: white; border: 1px solid #6a828e; padding: 5px 11px; border-radius: 8px; cursor: pointer; }
-.workspace { max-width: 1360px; padding: 28px clamp(16px, 4vw, 52px); margin: auto; }
-.page-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
-.page-heading h1 { margin: 0; font-size: 29px; }
-.page-heading span, .issue-id, time { color: var(--muted); font-size: 13px; }
-.workspace-grid { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 2fr); gap: 22px; align-items: start; }
-.el-card { --el-card-border-radius: 16px; --el-card-border-color: var(--line); margin-bottom: 16px; }
-.el-card__header { font-weight: 700; }
-.el-alert { margin-bottom: 16px; }
-.error-summary:focus { outline: 3px solid #087e79; outline-offset: 2px; }
-.stage-note { color: var(--muted); }
-form { display: grid; gap: 9px; }
-form label { margin-top: 2px; font-size: 13px; font-weight: 600; }
+h1 { margin-bottom: 8px; font-size: 22px; font-weight: 700; }
+h2 { margin-bottom: 8px; font-size: 16px; }
+button, input, select, textarea { font: inherit; }
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.topbar { position: sticky; top: 0; z-index: 2; min-height: 56px; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); color: var(--ink); border-bottom: 1px solid var(--line); }
+.brand, .account { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-logo { display: block; height: 32px; width: auto; aspect-ratio: 715 / 254; }
+.env-chip, .sim-note { color: var(--brand-deep); background: var(--selected); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+.env-chip { padding: 4px 8px; }
+.sim-note { display: inline-block; margin: 0 0 12px; padding: 4px 8px; }
+.account button, .el-button { min-height: 44px; border-radius: 6px; }
+.account button { background: var(--card); color: var(--brand); border: 1px solid var(--brand); padding: 0 12px; cursor: pointer; }
+.el-button--primary { --el-button-bg-color: #006072; --el-button-border-color: #006072; --el-button-text-color: #fff; --el-button-hover-bg-color: #0B5869; --el-button-hover-border-color: #0B5869; --el-button-hover-text-color: #fff; }
+.el-button:not(.el-button--primary) { --el-button-bg-color: #fff; --el-button-border-color: #006072; --el-button-text-color: #006072; --el-button-hover-bg-color: #E8F2F4; --el-button-hover-border-color: #0B5869; --el-button-hover-text-color: #006072; }
+.workspace { max-width: 1180px; padding: 12px 16px 24px; margin: auto; }
+.page-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.page-heading h1 { margin: 0; }
+.page-heading p, .stage-note, time, .row-meta { color: var(--muted); font-size: 13px; }
+.page-heading p { margin: 0; }
+.workspace-grid { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.sidebar { min-width: 0; }
+.el-card { --el-card-border-radius: 8px; --el-card-border-color: var(--line); --el-card-padding: 12px; margin-bottom: 12px; background: var(--card); }
+.el-card__header { min-height: 44px; padding: 10px 12px; font-weight: 700; }
+.el-card__body { padding: 12px; }
+.el-alert { margin-bottom: 12px; }
+.error-summary:focus { outline: 3px solid var(--brand); outline-offset: 2px; }
+form { display: grid; gap: 8px; }
+form label { font-size: 13px; font-weight: 600; }
 form .el-button { justify-self: start; }
-.callback { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); }
-.section-button { margin-top: 12px; }
-input[type=datetime-local], select { min-height: 36px; padding: 6px 9px; color: var(--ink); border: 1px solid #ccdbe2; border-radius: 7px; background: white; font: inherit; }
-.issue-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
-.status-chip { border-radius: 100px; padding: 4px 10px; color: #05615a; background: #d8f4ee; font-size: 13px; font-weight: 700; }
-.issue-id { overflow-wrap: anywhere; }
-.issue-description { padding: 14px; background: #f2f7f8; border-radius: 9px; }
-.timeline { list-style: none; margin: 0 0 22px 6px; padding: 0 0 0 17px; border-left: 2px solid #cae6df; }
-.timeline li { position: relative; margin: 0 0 12px; overflow-wrap: anywhere; }
-.timeline li::before { content: ""; position: absolute; left: -23px; top: 6px; width: 9px; height: 9px; border-radius: 100%; background: var(--accent); }
-.login-layout { max-width: 910px; margin: clamp(28px, 10vh, 100px) auto; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: white; }
-.login-cover { min-height: 355px; padding: 48px; color: white; background: radial-gradient(at 95% 90%, #087e79 0, #142d41 55%); display: flex; flex-direction: column; justify-content: center; }
-.cover-mark { font-size: 42px; font-weight: 850; color: #63e0c3; }
-.login-cover h1 { margin-bottom: 9px; font-size: 34px; }
-.login-cover p { margin: 0; color: #b9deda; }
-.login-panel { align-self: center; padding: 44px; }
-.login-panel h2 { font-size: 25px; }
-.empty-panel, .callback-history article { background: white; padding: 20px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; }
+.el-input__wrapper { min-height: 44px; }
+input[type=datetime-local], select { min-height: 44px; padding: 8px 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+.callback { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.section-button { margin-top: 8px; }
+.issue-head { margin-bottom: 8px; }
+.issue-kicker, .issue-title { margin: 0 0 8px; }
+.issue-kicker strong, .facts dd { overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.facts div { min-height: 44px; padding: 6px 8px; background: var(--selected); border-radius: 6px; }
+.facts dt { color: var(--muted); font-size: 12px; }
+.facts dd { margin: 2px 0 0; font-weight: 700; }
+.status-chip { display: inline-block; border-radius: 6px; padding: 2px 8px; background: var(--selected); color: var(--brand-deep); font-size: 13px; font-weight: 700; }
+.status-chip[data-state="resolved"] { background: #e7f3ec; color: var(--ok); }
+.status-chip[data-state="waiting"], .status-chip[data-state="verify"] { background: #f8f1dc; color: var(--warn); }
+.status-chip[data-state="triage"] { background: #f8e8e6; color: var(--danger); }
+.issue-description, .empty-panel, .callback-history article { background: var(--card); padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.issue-description { margin-bottom: 12px; }
 .empty-panel p { margin: 0; color: var(--muted); }
+.work-list { list-style: none; margin: 8px 0 0; padding: 0; max-block-size: 320px; overflow: auto; overscroll-behavior: contain; }
+.work-list li { border-bottom: 1px solid var(--line); }
+.work-list button, .work-list li { min-height: 48px; }
+.work-list button { width: 100%; padding: 6px 8px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; background: var(--card); color: var(--ink); border: 0; border-inline-start: 3px solid transparent; text-align: start; cursor: pointer; }
+.work-list button[aria-current="true"] { background: var(--selected); border-inline-start-color: var(--brand); }
+.row-title { font-weight: 650; }
+.timeline { list-style: none; margin: 0 0 12px; padding: 0; }
+.timeline li { min-height: 48px; padding: 8px 0 8px 14px; border-inline-start: 3px solid var(--line); }
+.timeline li div { overflow-wrap: anywhere; }
+.login-layout { max-width: 420px; margin: 32px auto; padding: 0 16px; }
+.login-panel { padding: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.login-panel .brand-logo { margin-bottom: 12px; }
 @media (max-width: 760px) {
-  .workspace-grid, .login-layout { grid-template-columns: 1fr; }
-  .login-layout { margin: 22px 16px; }
-  .login-cover { min-height: 180px; padding: 25px; }
-  .login-panel { padding: 25px; }
-  .topbar { height: 60px; }
+  .workspace-grid, .facts { grid-template-columns: 1fr; }
+  .topbar { align-items: flex-start; }
+  .brand { flex-wrap: wrap; }
 }
 </style>

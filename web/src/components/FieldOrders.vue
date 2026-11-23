@@ -1,7 +1,7 @@
 <template>
   <section v-if="problem.state === 'field' || problem.fieldOrders?.length" class="callback">
     <h2>智享乐装现场单</h2>
-    <ul>
+    <ul class="work-list">
       <li v-for="item in problem.fieldOrders" :key="item.externalNo">
         {{ item.externalNo }} · {{ labels[item.state] }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
       </li>
