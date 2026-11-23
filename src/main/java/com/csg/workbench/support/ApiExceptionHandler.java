@@ -55,6 +55,20 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(body(message));
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> methodNotSupported(HttpRequestMethodNotSupportedException exception) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (exception.getSupportedHttpMethods() != null && !exception.getSupportedHttpMethods().isEmpty()) {
+            response.allow(exception.getSupportedHttpMethods().toArray(new org.springframework.http.HttpMethod[0]));
+        }
+        return response.body(body("不支持该请求方法"));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> mediaNotSupported(HttpMediaTypeNotSupportedException exception) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(body("不支持该内容类型"));
+    }
+
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<Map<String, String>> database(DataAccessException exception) {
         log.warn("database operation failed: {}", exception.getClass().getSimpleName());
