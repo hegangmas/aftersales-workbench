@@ -1,14 +1,20 @@
 <template>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark">S</span><strong>售后工作台</strong><span class="env-chip">试用环境</span></div>
+      <div class="brand">
+        <img class="brand-logo" :src="logoUrl" alt="松果" width="90" height="32">
+        <strong>售后工作台</strong>
+        <span class="env-chip">模拟数据</span>
+      </div>
       <div v-if="account" class="account"><span>{{ account.username }}</span><button type="button" @click="signOut">退出</button></div>
     </header>
     <main v-if="authReady && !account" class="login-layout">
-      <section class="login-cover"><span class="cover-mark">S</span><h1>售后工作台</h1><p>设备查询、问题受理与回访</p></section>
       <section class="login-panel">
-        <h2>账号登录</h2>
-        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+        <h1>账号登录</h1>
+        <p class="sim-note">模拟数据 · 未连接生产系统</p>
+        <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
+          <el-alert :title="error" type="error" :closable="false" show-icon />
+        </div>
         <form @submit.prevent="signIn">
           <label for="username">账号</label>
           <el-input id="username" v-model.trim="username" autocomplete="username" required />
@@ -19,24 +25,44 @@
       </section>
     </main>
     <main v-if="account" class="workspace">
-      <div class="page-heading"><h1>问题处理</h1><span>模拟数据</span></div>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <div class="page-heading"><h1>问题处理</h1><p>模拟数据 · 未连接生产系统</p></div>
+      <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
+        <el-alert :title="error" type="error" :closable="false" show-icon />
+        <button v-if="problem" type="button" @click="openProblem(problem.id)">刷新问题单</button>
+      </div>
       <div class="workspace-grid">
-        <aside class="sidebar">
-    <el-card header="问题单与回访待办">
+        <aside class="sidebar" aria-label="问题与设备">
+    <el-card header="问题单与回访">
       <form @submit.prevent="openProblem(orderId)">
         <label for="order-id">问题单号</label>
         <el-input id="order-id" v-model.trim="orderId" placeholder="例如 AS-12" />
         <el-button native-type="submit" :disabled="busy || !orderId">打开问题单</el-button>
       </form>
-      <el-button class="section-button" :disabled="busy" @click="refreshDue">查看到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshDue('mine')">我的到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshDue('team')">团队到期回访</el-button>
+      <el-button class="section-button" :disabled="busy" @click="refreshMine">我的待办</el-button>
       <p v-if="dueOrders && !dueOrders.length">当前没有到期回访</p>
-      <ul v-if="dueOrders">
+      <div v-if="dueOrders" class="scroll-region" tabindex="0" role="region" aria-label="到期回访">
+      <ul class="work-list">
         <li v-for="item in dueOrders" :key="item.problemId">
-          <button type="button" @click="openProblem(item.problemId)">{{ item.title }}</button>
-          {{ item.owner }} · {{ item.dueAt }} · {{ item.nextStep }}
+          <button type="button" :aria-current="problem?.id === item.problemId ? 'true' : undefined" @click="openProblem(item.problemId)">
+            <span class="row-title">{{ item.title }}</span>
+            <span class="row-meta">{{ item.owner }} · {{ item.dueAt }} · {{ item.nextStep }}</span>
+          </button>
         </li>
       </ul>
+      </div>
+      <div v-if="mine" class="scroll-region" tabindex="0" role="region" aria-label="我的待办">
+        <p v-if="!mine.length">当前没有负责中的问题单</p>
+        <ul v-else class="work-list">
+          <li v-for="item in mine" :key="item.id">
+            <button type="button" :aria-current="problem?.id === item.id ? 'true' : undefined" @click="openProblem(item.id)">
+              <span class="row-title">{{ orderNumber(item) }} · {{ item.title }}</span>
+              <span class="row-meta">{{ item.device }} · {{ statusLabel(item.state) }}</span>
+            </button>
+          </li>
+        </ul>
+      </div>
     </el-card>
     <el-card header="设备查询">
       <form @submit.prevent="search">
@@ -48,13 +74,37 @@
         <h2>{{ device.device }}</h2>
         <p>{{ device.fault }}</p>
         <p>{{ device.source }} · {{ device.observedAt }}</p>
-        <ul v-if="deviceOrders.length">
+        <ul v-if="deviceOrders.length" class="work-list">
           <li v-for="item in deviceOrders" :key="item.id">
-            <button type="button" @click="openProblem(item.id)">{{ item.title }}</button>
-            {{ statusLabel(item.state) }}
+            <button type="button" :aria-current="problem?.id === item.id ? 'true' : undefined" @click="openProblem(item.id)">
+              <span class="row-title">{{ orderNumber(item) }} · {{ item.title }}</span>
+              <span class="row-meta">{{ item.device }} · {{ statusLabel(item.state) }}</span>
+            </button>
           </li>
         </ul>
       </section>
+    </el-card>
+    <el-card v-if="account?.role === 'admin'" header="账号">
+      <form @submit.prevent="addAccount">
+        <label for="new-username">新账号</label>
+        <el-input id="new-username" v-model.trim="newUsername" maxlength="20" autocomplete="off" required />
+        <label for="new-password">初始密码</label>
+        <el-input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+        <label for="new-role">角色</label>
+        <select id="new-role" v-model="newRole">
+          <option value="operator">坐席</option>
+          <option value="admin">管理员</option>
+        </select>
+        <el-button native-type="submit" :disabled="busy">创建账号</el-button>
+      </form>
+      <div class="scroll-region" tabindex="0" role="region" aria-label="账号列表">
+        <ul class="work-list">
+          <li v-for="item in accounts" :key="item.username">
+            <span class="row-title">{{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }} · {{ item.enabled ? '启用' : '禁用' }}</span>
+            <button type="button" :disabled="busy" @click="toggleAccount(item)">{{ item.enabled ? '禁用' : '启用' }}</button>
+          </li>
+        </ul>
+      </div>
     </el-card>
         </aside>
         <section class="details">
@@ -71,14 +121,44 @@
         <el-button native-type="submit" type="primary" :disabled="busy || !title || !description">创建问题单</el-button>
       </form>
     </el-card>
-    <el-card v-if="problem" :header="problem.title">
-      <div class="issue-meta"><span class="status-chip">{{ statusLabel(problem.state) }}</span><span>{{ problem.device }}</span></div>
-      <p class="issue-id">问题单 {{ orderNumber(problem) }}</p>
+    <el-card v-if="problem">
+      <header class="issue-head">
+        <p class="issue-kicker">问题单 <strong>{{ orderNumber(problem) }}</strong></p>
+        <h2 class="issue-title">{{ problem.title }}</h2>
+        <dl class="facts">
+          <div><dt>桩编码</dt><dd>{{ problem.device }}</dd></div>
+          <div><dt>状态</dt><dd><span class="status-chip" :data-state="problem.state">{{ statusLabel(problem.state) }}</span></dd></div>
+          <div><dt>负责人</dt><dd>{{ ownerLabel(problem.owner) }}</dd></div>
+          <div><dt>下一步</dt><dd>{{ nextAction }}</dd></div>
+        </dl>
+      </header>
+      <p v-if="unowned(problem) && problem.state !== 'resolved'"><button type="button" :disabled="busy" @click="claim">认领问题单</button></p>
+      <form v-if="canHandoff" @submit.prevent="handoff">
+        <label for="handoff-target">转交给</label>
+        <select id="handoff-target" v-model="handoffTarget" required>
+          <option value="" disabled>请选择</option>
+          <option v-for="item in assignees" :key="item.username" :value="item.username">{{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }}</option>
+        </select>
+        <label for="handoff-reason">转交原因</label>
+        <el-input id="handoff-reason" v-model.trim="handoffReason" maxlength="500" />
+        <el-button native-type="submit" :disabled="busy || !handoffTarget || !handoffReason">转交</el-button>
+      </form>
+      <section v-if="problem.ownershipEvents?.length">
+        <h2>认领与转交</h2>
+        <div class="scroll-region" tabindex="0" role="region" aria-label="认领与转交">
+          <ul class="work-list">
+            <li v-for="(item, index) in problem.ownershipEvents" :key="index">
+              {{ dateLabel(item.createdAt) }} · {{ item.actor }} · {{ item.action === 'claim' ? '认领' : '由 ' + (item.fromOwner === 'early' ? '无主' : item.fromOwner) + ' 交给 ' + item.toOwner }}<span v-if="item.reason"> · {{ item.reason }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
       <p class="issue-description">{{ problem.description }}</p>
       <h2>处理记录</h2>
       <ol class="timeline">
         <li v-for="(activity, index) in problem.activities" :key="index">
-          <time>{{ dateLabel(activity.createdAt) }}</time><div>{{ activity.note }}</div>
+          <time>{{ dateLabel(activity.createdAt) }}</time>
+          <div><span v-if="activity.actor">{{ activity.actor }} · </span>{{ activity.note }}</div>
         </li>
       </ol>
       <div v-if="problem.callbackResults?.length" class="callback-history">
@@ -96,8 +176,15 @@
       </form>
       <FieldOrders :key="problem.id + ':' + (problem.fieldOrders?.[0]?.state || '')"
         :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
-      <section v-if="problem.state !== 'resolved' && !fieldInProgress" class="callback">
+      <p v-if="problem.state === 'field'" class="stage-note">待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。</p>
+      <form v-if="problem.state === 'field' && !fieldInProgress" @submit.prevent="withdrawDispatch">
+        <label for="withdraw-reason">撤回原因</label>
+        <el-input id="withdraw-reason" v-model.trim="withdrawReason" type="textarea" maxlength="500" />
+        <el-button native-type="submit" :disabled="busy || !withdrawReason">撤回待派单，返回排查</el-button>
+      </form>
+      <section v-if="problem.state !== 'resolved' && problem.state !== 'field' && !fieldInProgress" class="callback">
         <h2>回访安排</h2>
+        <p v-if="problem.state === 'verify' || problem.resumeState === 'verify'" class="stage-note">待验证问题可以安排回访。选择继续跟进后，问题仍回到待验证。</p>
         <p v-if="problem.pendingFollowup">
           {{ problem.pendingFollowup.overdue ? '已到期' : '待回访' }} ·
           {{ problem.pendingFollowup.dueAt }} · {{ problem.pendingFollowup.owner }} ·
@@ -147,9 +234,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import logoUrl from './assets/logo-soongo-teal.png'
 import FieldOrders from './components/FieldOrders.vue'
-import { currentAccount, login, logout, addFollowup, createProblem, dueCallbacks, findProblems, finishCallback, linkFieldOrder, loadProblem, lookupDevice, recordFieldResult, scheduleCallback } from './api/workbench'
+import { currentAccount, login, logout, addFollowup, assignableAccounts, claimProblem, createAccount, createProblem, dueCallbacks, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, mineProblems, recordFieldResult, scheduleCallback, setAccountEnabled, withdrawField } from './api/workbench'
 
 const query = ref('')
 const title = ref('')
@@ -159,6 +247,7 @@ const device = ref(null)
 const problem = ref(null)
 const busy = ref(false)
 const error = ref('')
+const errorSummary = ref(null)
 const orderId = ref('')
 const deviceOrders = ref([])
 const dueOrders = ref(null)
@@ -176,6 +265,15 @@ const contactedAt = ref('')
 const evidenceSource = ref('')
 const evidence = ref('')
 const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
+const accounts = ref([])
+const assignees = ref([])
+const mine = ref(null)
+const withdrawReason = ref('')
+const handoffTarget = ref('')
+const handoffReason = ref('')
+const newUsername = ref('')
+const newPassword = ref('')
+const newRole = ref('operator')
 
 function orderNumber(item) {
   return item.displayNumber ? 'AS-' + item.displayNumber : item.id
@@ -211,6 +309,7 @@ function signIn() {
   return run(async () => {
     try {
       account.value = await login(username.value, password.value)
+      await loadAccounts()
       await restoreOrder()
     } finally {
       password.value = ''
@@ -229,6 +328,7 @@ onMounted(async () => {
   window.addEventListener('workbench-session-expired', clearAccount)
   try {
     account.value = await currentAccount()
+    await loadAccounts()
   } catch {
     return
   } finally {
@@ -238,17 +338,37 @@ onMounted(async () => {
 })
 onUnmounted(() => window.removeEventListener('workbench-session-expired', clearAccount))
 const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
+const nextAction = computed(() => {
+  const current = problem.value
+  if (!current) return ''
+  if (current.state === 'resolved') return '已结案，不再写入'
+  if (current.state === 'field') return '关联或登记智享乐装现场单'
+  if (current.pendingFollowup?.nextStep) return current.pendingFollowup.nextStep
+  if (current.state === 'verify' || current.resumeState === 'verify') return '安排回访或提交恢复依据'
+  return '记录跟进或安排回访'
+})
+
+function ownerLabel(owner) {
+  return !owner || owner === 'early' ? '无主' : owner
+}
+
+function unowned(item) {
+  return !item?.owner || item.owner === 'early'
+}
+
+const canHandoff = computed(() => problem.value && problem.value.state !== 'resolved' && !unowned(problem.value)
+  && (account.value?.role === 'admin' || account.value?.username === problem.value.owner))
 
 function saveFieldLink(number) {
   return run(async () => {
-    await linkFieldOrder(problem.value.id, number)
+    await linkFieldOrder(problem.value.id, number, problem.value.version)
     await showProblem(problem.value.id)
   })
 }
 
 function saveFieldResult(form) {
   return run(async () => {
-    await recordFieldResult(problem.value.id, form)
+    await recordFieldResult(problem.value.id, { ...form, expectedVersion: problem.value.version })
     await showProblem(problem.value.id)
   })
 }
@@ -272,22 +392,89 @@ async function showProblem(id) {
   evidenceSource.value = ''
   evidence.value = ''
   history.replaceState(null, '', '?problem=' + encodeURIComponent(orderId.value))
+  assignees.value = await assignableAccounts()
 }
 
 function openProblem(id) {
   return run(() => showProblem(id))
 }
 
-function refreshDue() {
-  return run(async () => { dueOrders.value = await dueCallbacks() })
+function refreshDue(scope) {
+  return run(async () => {
+    const page = await dueCallbacks(scope)
+    dueOrders.value = page.items || []
+  })
+}
+
+async function loadMine() {
+  const page = await mineProblems()
+  mine.value = page.items || []
+}
+
+function refreshMine() {
+  return run(loadMine)
+}
+
+function withdrawDispatch() {
+  return run(async () => {
+    const id = problem.value.id
+    await withdrawField(id, withdrawReason.value, problem.value.version)
+    withdrawReason.value = ''
+    await showProblem(id)
+  })
+}
+
+function claim() {
+  return run(async () => {
+    const id = problem.value.id
+    await claimProblem(id, problem.value.version)
+    await showProblem(id)
+    if (mine.value) await loadMine()
+  })
+}
+
+function handoff() {
+  return run(async () => {
+    const id = problem.value.id
+    await handoffProblem(id, { target: handoffTarget.value, reason: handoffReason.value, expectedVersion: problem.value.version })
+    handoffReason.value = ''
+    await showProblem(id)
+    if (mine.value) await loadMine()
+  })
+}
+
+async function loadAccounts() {
+  if (account.value?.role !== 'admin') {
+    accounts.value = []
+    return
+  }
+  accounts.value = await listAccounts()
+}
+
+function addAccount() {
+  return run(async () => {
+    await createAccount({ username: newUsername.value, password: newPassword.value, role: newRole.value })
+    newUsername.value = ''
+    newPassword.value = ''
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+  })
+}
+
+function toggleAccount(item) {
+  return run(async () => {
+    await setAccountEnabled(item.username, !item.enabled)
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+  })
 }
 
 function saveSchedule() {
   return run(async () => {
     const id = problem.value.id
-    await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value })
+    await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value, expectedVersion: problem.value.version })
     await showProblem(id)
-    if (dueOrders.value) dueOrders.value = await dueCallbacks()
+    if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
   })
 }
 
@@ -295,9 +482,9 @@ function saveOutcome() {
   return run(async () => {
     const id = problem.value.id
     await finishCallback(id, { outcome: outcome.value, note: result.value, contactedAt: contactedAt.value,
-      evidenceSource: evidenceSource.value || null, evidence: evidence.value || null })
+      evidenceSource: evidenceSource.value || null, evidence: evidence.value || null, expectedVersion: problem.value.version })
     await showProblem(id)
-    if (dueOrders.value) dueOrders.value = await dueCallbacks()
+    if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
   })
 }
 
@@ -309,6 +496,8 @@ async function run(action) {
     await action()
   } catch (failure) {
     error.value = failure.message
+    await nextTick()
+    if (errorSummary.value) errorSummary.value.focus()
   } finally {
     busy.value = false
   }
@@ -340,7 +529,7 @@ function create() {
 function saveNote() {
   return run(async () => {
     const id = problem.value.id
-    await addFollowup(id, note.value)
+    await addFollowup(id, note.value, problem.value.version)
     note.value = ''
     problem.value = await loadProblem(id)
   })
@@ -348,52 +537,113 @@ function saveNote() {
 </script>
 
 <style>
-:root { color-scheme: light; --ink: #172d42; --muted: #566b7d; --surface: #fff; --accent: #087e79; --line: #dbe6eb; --el-color-primary: #087e79; }
+:root {
+  color-scheme: light;
+  --brand: #006072;
+  --brand-deep: #0B5869;
+  --canvas: #F4F8F9;
+  --card: #fff;
+  --ink: #1A2B30;
+  --muted: #5B6E74;
+  --line: #D5E3E6;
+  --selected: #E8F2F4;
+  --ok: #2E7D4F;
+  --warn: #8F6A00;
+  --danger: #C0362C;
+  --el-color-primary: #006072;
+  --el-color-primary-light-3: #4d909c;
+  --el-color-primary-light-5: #80b0b9;
+  --el-color-primary-light-7: #b3d0d5;
+  --el-color-primary-light-8: #cce0e3;
+  --el-color-primary-light-9: #E8F2F4;
+  --el-color-primary-dark-2: #0B5869;
+  --el-color-success: #2E7D4F;
+  --el-color-warning: #8F6A00;
+  --el-color-danger: #C0362C;
+  --el-color-error: #C0362C;
+  --el-text-color-primary: #1A2B30;
+  --el-text-color-regular: #1A2B30;
+  --el-text-color-secondary: #5B6E74;
+  --el-border-color: #D5E3E6;
+  --el-border-radius-base: 6px;
+  --el-font-family: "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif;
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: #edf3f5; color: var(--ink); font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--el-font-family); }
 h1, h2, p { margin-top: 0; }
-h1 { letter-spacing: -.035em; }
-h2 { font-size: 16px; }
-.topbar { height: 68px; padding: 0 clamp(16px, 4vw, 52px); display: flex; align-items: center; justify-content: space-between; background: #122b3c; color: white; }
-.brand, .account { display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 32px; height: 32px; display: grid; place-items: center; background: #48d7b8; color: #102d3f; border-radius: 9px; font-weight: 850; }
-.env-chip { color: #bdede2; border: 1px solid #41616e; border-radius: 100px; font-size: 12px; padding: 3px 8px; }
-.account button { background: transparent; color: white; border: 1px solid #6a828e; padding: 5px 11px; border-radius: 8px; cursor: pointer; }
-.workspace { max-width: 1360px; padding: 28px clamp(16px, 4vw, 52px); margin: auto; }
-.page-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
-.page-heading h1 { margin: 0; font-size: 29px; }
-.page-heading span, .issue-id, time { color: var(--muted); font-size: 13px; }
-.workspace-grid { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 2fr); gap: 22px; align-items: start; }
-.el-card { --el-card-border-radius: 16px; --el-card-border-color: var(--line); margin-bottom: 16px; }
-.el-card__header { font-weight: 700; }
-.el-alert { margin-bottom: 16px; }
-form { display: grid; gap: 9px; }
-form label { margin-top: 2px; font-size: 13px; font-weight: 600; }
+h1 { margin-bottom: 8px; font-size: 22px; font-weight: 700; }
+h2 { margin-bottom: 8px; font-size: 16px; }
+button, input, select, textarea { font: inherit; }
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.topbar { position: sticky; top: 0; z-index: 2; min-height: 56px; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); color: var(--ink); border-bottom: 1px solid var(--line); }
+.brand, .account { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-logo { display: block; height: 32px; width: auto; aspect-ratio: 715 / 254; }
+.env-chip, .sim-note { color: var(--brand-deep); background: var(--selected); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+.env-chip { padding: 4px 8px; }
+.sim-note { display: inline-block; margin: 0 0 12px; padding: 4px 8px; }
+.account button, .el-button { min-height: 44px; border-radius: 6px; }
+.account button { background: var(--card); color: var(--brand); border: 1px solid var(--brand); padding: 0 12px; cursor: pointer; }
+.el-button--primary { --el-button-bg-color: #006072; --el-button-border-color: #006072; --el-button-text-color: #fff; --el-button-hover-bg-color: #0B5869; --el-button-hover-border-color: #0B5869; --el-button-hover-text-color: #fff; }
+.el-button:not(.el-button--primary) { --el-button-bg-color: #fff; --el-button-border-color: #006072; --el-button-text-color: #006072; --el-button-hover-bg-color: #E8F2F4; --el-button-hover-border-color: #0B5869; --el-button-hover-text-color: #006072; }
+.workspace { max-width: 1180px; padding: 12px 16px 24px; margin: auto; }
+.page-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.page-heading h1 { margin: 0; }
+.page-heading p, .stage-note, time, .row-meta { color: var(--muted); font-size: 13px; }
+.page-heading p { margin: 0; }
+.workspace-grid { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.sidebar { min-width: 0; }
+.el-card { --el-card-border-radius: 8px; --el-card-border-color: var(--line); --el-card-padding: 12px; margin-bottom: 12px; background: var(--card); }
+.el-card__header { min-height: 44px; padding: 10px 12px; font-weight: 700; }
+.el-card__body { padding: 12px; }
+.el-alert { margin-bottom: 12px; }
+.error-summary:focus { outline: 3px solid var(--brand); outline-offset: 2px; }
+form { display: grid; gap: 8px; }
+form label { font-size: 13px; font-weight: 600; }
 form .el-button { justify-self: start; }
-.callback { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); }
-.section-button { margin-top: 12px; }
-input[type=datetime-local], select { min-height: 36px; padding: 6px 9px; color: var(--ink); border: 1px solid #ccdbe2; border-radius: 7px; background: white; font: inherit; }
-.issue-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
-.status-chip { border-radius: 100px; padding: 4px 10px; color: #05615a; background: #d8f4ee; font-size: 13px; font-weight: 700; }
-.issue-id { overflow-wrap: anywhere; }
-.issue-description { padding: 14px; background: #f2f7f8; border-radius: 9px; }
-.timeline { list-style: none; margin: 0 0 22px 6px; padding: 0 0 0 17px; border-left: 2px solid #cae6df; }
-.timeline li { position: relative; margin: 0 0 12px; overflow-wrap: anywhere; }
-.timeline li::before { content: ""; position: absolute; left: -23px; top: 6px; width: 9px; height: 9px; border-radius: 100%; background: var(--accent); }
-.login-layout { max-width: 910px; margin: clamp(28px, 10vh, 100px) auto; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: white; }
-.login-cover { min-height: 355px; padding: 48px; color: white; background: radial-gradient(at 95% 90%, #087e79 0, #142d41 55%); display: flex; flex-direction: column; justify-content: center; }
-.cover-mark { font-size: 42px; font-weight: 850; color: #63e0c3; }
-.login-cover h1 { margin-bottom: 9px; font-size: 34px; }
-.login-cover p { margin: 0; color: #b9deda; }
-.login-panel { align-self: center; padding: 44px; }
-.login-panel h2 { font-size: 25px; }
-.empty-panel, .callback-history article { background: white; padding: 20px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; }
+.el-input__wrapper { min-height: 44px; }
+input[type=datetime-local], select { min-height: 44px; padding: 8px 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+.callback { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.section-button { margin-top: 8px; }
+.issue-head { margin-bottom: 8px; }
+.issue-kicker, .issue-title { margin: 0 0 8px; }
+.issue-kicker strong, .facts dd { overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.facts div { min-height: 44px; padding: 6px 8px; background: var(--selected); border-radius: 6px; }
+.facts dt { color: var(--muted); font-size: 12px; }
+.facts dd { margin: 2px 0 0; font-weight: 700; }
+.status-chip { display: inline-block; border-radius: 6px; padding: 2px 8px; background: var(--selected); color: var(--brand-deep); font-size: 13px; font-weight: 700; }
+.status-chip[data-state="resolved"] { background: #e7f3ec; color: var(--ok); }
+.status-chip[data-state="waiting"], .status-chip[data-state="verify"] { background: #f8f1dc; color: var(--warn); }
+.status-chip[data-state="triage"] { background: #f8e8e6; color: var(--danger); }
+.issue-description, .empty-panel, .callback-history article { background: var(--card); padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.issue-description { margin-bottom: 12px; }
 .empty-panel p { margin: 0; color: var(--muted); }
-@media (max-width: 760px) {
-  .workspace-grid, .login-layout { grid-template-columns: 1fr; }
-  .login-layout { margin: 22px 16px; }
-  .login-cover { min-height: 180px; padding: 25px; }
-  .login-panel { padding: 25px; }
-  .topbar { height: 60px; }
+.scroll-region { max-inline-size: 100%; max-block-size: 320px; overflow: auto; overscroll-behavior: contain; }
+.work-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.work-list li { border-bottom: 1px solid var(--line); }
+.work-list button, .work-list li { min-height: 48px; }
+.work-list button { width: 100%; padding: 6px 8px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; background: var(--card); color: var(--ink); border: 0; border-inline-start: 3px solid transparent; text-align: start; cursor: pointer; }
+.work-list button[aria-current="true"] { background: var(--selected); border-inline-start-color: var(--brand); }
+.row-title { font-weight: 650; }
+.timeline { list-style: none; margin: 0 0 12px; padding: 0; }
+.timeline li { min-height: 48px; padding: 8px 0 8px 14px; border-inline-start: 3px solid var(--line); }
+.timeline li div { overflow-wrap: anywhere; }
+.login-layout { max-width: 420px; margin: 32px auto; padding: 0 16px; }
+.login-panel { padding: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.login-panel .brand-logo { margin-bottom: 12px; }
+h1, h2 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
+img { max-inline-size: 100%; block-size: auto; }
+body { overflow-wrap: break-word; }
+html { scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px)); }
+.topbar { padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.workspace { container: workspace / inline-size; }
+@container workspace (inline-size < 720px) {
+  .workspace-grid, .facts { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .workspace-grid, .facts { grid-template-columns: 1fr; }
+  .topbar, .brand, .account { align-items: flex-start; flex-wrap: wrap; }
+  :where(button, select, .el-button) { min-block-size: 44px; min-inline-size: 44px; }
 }
 </style>
