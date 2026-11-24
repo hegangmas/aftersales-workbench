@@ -13,6 +13,9 @@ class ApiErrorsTest {
     @Test
     void keepsBusinessChineseAndDropsSql() {
         assertEquals("问题单已结案", ApiErrors.safeMessage("问题单已结案", 409));
+        assertEquals("只有当前负责人或管理员可以处理这张问题单",
+            ApiErrors.safeMessage("只有当前负责人或管理员可以处理这张问题单", 403));
+        assertEquals("无主问题请先认领", ApiErrors.safeMessage("无主问题请先认领", 409));
         assertEquals("请先关联现场单，不能跳过派单阶段",
             ApiErrors.safeMessage("请先关联现场单，不能跳过派单阶段", 409));
         String leaked = ApiErrors.safeMessage("SELECT password FROM problem", 500);

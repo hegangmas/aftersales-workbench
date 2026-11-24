@@ -56,7 +56,7 @@ class ProblemServiceTest {
 
     @Test
     void followupStoresCurrentLoginName() {
-        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "early"));
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "operator.1"));
         when(mapper.changeState(eq(ID), eq("open"), eq(3))).thenReturn(1);
         service.recordFollowup(ID, " 已联系车主 ", 3, "followup-key1");
         verify(mapper).insertActivity(ID, "operator.1", "followup", "已联系车主");
@@ -91,7 +91,7 @@ class ProblemServiceTest {
 
     @Test
     void fieldWithoutOrderCannotSkipDispatch() {
-        when(mapper.lockProblem(ID)).thenReturn(row("field", 1, "early"));
+        when(mapper.lockProblem(ID)).thenReturn(row("field", 1, "operator.1"));
         when(mapper.activeFieldOrders(ID)).thenReturn(0);
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
             () -> service.schedule(ID, "坐席", "确认恢复", future(), 1, "schedule-key1"));
@@ -112,7 +112,7 @@ class ProblemServiceTest {
 
     @Test
     void verifyCallbackReturnsToVerify() {
-        when(mapper.lockProblem(ID)).thenReturn(row("verify", 1, "early"), row("waiting", 2, "early"));
+        when(mapper.lockProblem(ID)).thenReturn(row("verify", 1, "operator.1"), row("waiting", 2, "operator.1"));
         when(mapper.activeFieldOrders(ID)).thenReturn(0);
         when(mapper.changeState(eq(ID), eq("waiting"), eq(1))).thenReturn(1);
         when(mapper.changeState(eq(ID), eq("verify"), eq(2))).thenReturn(1);
@@ -178,6 +178,93 @@ class ProblemServiceTest {
     }
 
     @Test
+    void claimedTicketRejectsOtherOperatorAndKeepsWritesOff() {
+        loginAs("operator.2", false);
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "operator.1"));
+        ResponseStatusException followup = assertThrows(ResponseStatusException.class,
+            () -> service.recordFollowup(ID, "越权跟进", 3, "deny-followup"));
+        assertEquals(HttpStatus.FORBIDDEN, followup.getStatus());
+        assertEquals(ProblemService.HANDLER_REQUIRED, followup.getReason());
+        ResponseStatusException schedule = assertThrows(ResponseStatusException.class,
+            () -> service.schedule(ID, "坐席", "确认恢复", future(), 3, "deny-schedule"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, schedule.getReason());
+        ResponseStatusException callback = assertThrows(ResponseStatusException.class,
+            () -> service.finishCallback(ID, "resolved", "想直接结案", past(), "customer", "依据", 3, "deny-callback"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, callback.getReason());
+        ResponseStatusException handoff = assertThrows(ResponseStatusException.class,
+            () -> service.handoff(ID, "operator.2", "接手", 3, "deny-handoff"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, handoff.getReason());
+        when(mapper.lockProblem(ID)).thenReturn(row("field", 4, "operator.1"));
+        ResponseStatusException withdraw = assertThrows(ResponseStatusException.class,
+            () -> service.withdrawField(ID, "想撤回", 4, "deny-withdraw"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, withdraw.getReason());
+        ResponseStatusException link = assertThrows(ResponseStatusException.class,
+            () -> service.linkFieldOrder(ID, "SIM-DENY", 4, "deny-link"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, link.getReason());
+        ResponseStatusException receipt = assertThrows(ResponseStatusException.class,
+            () -> service.recordFieldResult(ID, "SIM-DENY", "complete", "想完工", 4, "deny-receipt"));
+        assertEquals(ProblemService.HANDLER_REQUIRED, receipt.getReason());
+        verify(mapper, never()).insertActivity(any(), any(), any(), any());
+        verify(mapper, never()).changeState(anyString(), anyString(), anyInt());
+        verify(mapper, never()).schedule(anyString(), anyString(), anyString(), any());
+        verify(mapper, never()).insertCallback(anyString(), anyString(), any(), anyString(), anyString(), any(), any());
+        verify(mapper, never()).verify(anyString(), anyString(), anyString(), anyString());
+        verify(mapper, never()).linkFieldOrder(anyString(), anyString());
+        verify(mapper, never()).updateFieldOrder(anyString(), anyString(), anyString(), anyString());
+        verify(mapper, never()).assignOwner(anyString(), anyString(), anyInt());
+        verify(mapper, never()).setResume(anyString(), any());
+        verify(mapper, never()).completeFollowup(anyString());
+    }
+
+    @Test
+    void adminCanHandleTicketOwnedByAnotherSeat() {
+        loginAs("admin.1", true);
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 6, "operator.1"));
+        when(mapper.changeState(ID, "open", 6)).thenReturn(1);
+        service.recordFollowup(ID, "管理员补充", 6, "admin-followup");
+        verify(mapper).insertActivity(ID, "admin.1", "followup", "管理员补充");
+    }
+
+    @Test
+    void unownedTicketRequiresClaimBeforeOperatorWrites() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "early"), row("open", 2, ""));
+        ResponseStatusException early = assertThrows(ResponseStatusException.class,
+            () -> service.recordFollowup(ID, "未认领", 2, "early-followup"));
+        assertEquals(HttpStatus.CONFLICT, early.getStatus());
+        assertEquals(ProblemService.CLAIM_FIRST, early.getReason());
+        ResponseStatusException blank = assertThrows(ResponseStatusException.class,
+            () -> service.schedule(ID, "坐席", "先认领", future(), 2, "blank-schedule"));
+        assertEquals(ProblemService.CLAIM_FIRST, blank.getReason());
+        verify(mapper, never()).insertActivity(any(), any(), any(), any());
+        verify(mapper, never()).schedule(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void adminCanWriteUnownedTicketAndHandoffStillRequiresClaim() {
+        loginAs("admin.1", true);
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "early"));
+        when(mapper.changeState(ID, "open", 2)).thenReturn(1);
+        service.recordFollowup(ID, "管理员先记一笔", 2, "admin-early-followup");
+        verify(mapper).insertActivity(ID, "admin.1", "followup", "管理员先记一笔");
+        ResponseStatusException handoff = assertThrows(ResponseStatusException.class,
+            () -> service.handoff(ID, "operator.1", "还没人认领", 2, "admin-early-handoff"));
+        assertEquals(HttpStatus.CONFLICT, handoff.getStatus());
+        assertEquals(ProblemService.CLAIM_FIRST, handoff.getReason());
+        verify(mapper, never()).assignOwner(anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    void blankOwnerCanStillBeClaimedOnce() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 1, " "), row("open", 2, "operator.1"));
+        when(mapper.assignOwner(ID, "operator.1", 1)).thenReturn(1);
+        service.claim(ID, 1, "claim-blank-owner");
+        verify(mapper).insertOwnership(ID, "operator.1", " ", "operator.1", "claim", "");
+        ResponseStatusException second = assertThrows(ResponseStatusException.class,
+            () -> service.claim(ID, 1, "claim-blank-owner-2"));
+        assertEquals(HttpStatus.CONFLICT, second.getStatus());
+    }
+
+    @Test
     void shortNumberAndUuidBothResolve() {
         Map<String, Object> found = new LinkedHashMap<String, Object>();
         found.put("id", ID);
@@ -190,6 +277,11 @@ class ProblemServiceTest {
         when(mapper.ownershipEvents(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         assertEquals(ID, service.detail("as-12").get("id"));
         assertEquals(ID, service.detail(ID).get("id"));
+    }
+
+    private void loginAs(String name, boolean admin) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+            name, "unused", AuthorityUtils.createAuthorityList(admin ? "ROLE_ADMIN" : "ROLE_OPERATOR")));
     }
 
     private static Map<String, Object> row(String state, int version, String owner) {
