@@ -1,7 +1,10 @@
 package com.csg.workbench.auth;
 
 import com.csg.workbench.account.AccountService;
+import java.time.LocalDateTime;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -50,15 +53,32 @@ public class SecurityConfiguration {
                 org.springframework.security.core.Authentication authentication =
                     SecurityContextHolder.getContext().getAuthentication();
                 if (authentication != null && authentication.isAuthenticated()
-                    && authentication.getName() != null && !"anonymousUser".equals(authentication.getName())
-                    && !accounts.enabled(authentication.getName())) {
-                    ((HttpServletResponse) response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    return;
+                    && authentication.getName() != null && !"anonymousUser".equals(authentication.getName())) {
+                    if (!accounts.enabled(authentication.getName())) {
+                        ((HttpServletResponse) response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        return;
+                    }
+                    HttpServletRequest httpRequest = (HttpServletRequest) request;
+                    HttpSession session = httpRequest.getSession(false);
+                    Object seen = session == null ? null : session.getAttribute(WorkbenchSession.CREDENTIALS_CHANGED_AT);
+                    LocalDateTime changedAt = accounts.credentialsChangedAt(authentication.getName());
+                    if (!(seen instanceof LocalDateTime) || changedAt == null || changedAt.isAfter((LocalDateTime) seen)) {
+                        SecurityContextHolder.clearContext();
+                        if (session != null) {
+                            session.invalidate();
+                        }
+                        ((HttpServletResponse) response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        return;
+                    }
                 }
                 chain.doFilter(request, response);
             }, UsernamePasswordAuthenticationFilter.class)
             .formLogin().loginProcessingUrl("/api/session/login")
-            .successHandler((request, response, auth) -> response.setStatus(HttpServletResponse.SC_NO_CONTENT))
+            .successHandler((request, response, auth) -> {
+                request.getSession().setAttribute(WorkbenchSession.CREDENTIALS_CHANGED_AT,
+                    accounts.credentialsChangedAt(auth.getName()));
+                response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            })
             .failureHandler((request, response, failure) -> response.setStatus(HttpServletResponse.SC_UNAUTHORIZED))
             .and().logout().logoutUrl("/api/session/logout")
             .deleteCookies("WORKBENCH_SESSION")

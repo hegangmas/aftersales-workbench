@@ -1,7 +1,11 @@
 package com.csg.workbench.account;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AccountService {
+    private static final Logger log = LoggerFactory.getLogger(AccountService.class);
     private final AccountMapper mapper;
     private final PasswordEncoder passwords;
 
@@ -53,9 +58,7 @@ public class AccountService {
         if (username == null || !username.matches("[a-zA-Z0-9_.-]{1,20}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "账号只能包含字母数字和 ._- ，且不超过20字");
         }
-        if (password == null || password.length() < 8 || password.length() > 72) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码长度需要在8到72之间");
-        }
+        requireStrongPassword(password, username);
         if (!"admin".equals(role) && !"operator".equals(role)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "角色只能是管理员或坐席");
         }
@@ -79,6 +82,73 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "不能禁用当前唯一的管理会话");
         }
         mapper.setEnabled(username, enabled ? 1 : 0);
+    }
+
+    public LocalDateTime credentialsChangedAt(String username) {
+        return mapper.credentialsChangedAt(username);
+    }
+
+    @Transactional
+    public void changePassword(String username, String currentPassword, String nextPassword) {
+        Map<String, Object> account = requireAccount(username);
+        String hash = String.valueOf(account.get("passwordHash"));
+        if (currentPassword == null || currentPassword.isEmpty() || !passwords.matches(currentPassword, hash)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前密码不正确");
+        }
+        storeNewPassword(username, username, nextPassword, hash, "password_change");
+    }
+
+    @Transactional
+    public void resetPassword(String actor, String username, String nextPassword) {
+        Map<String, Object> account = mapper.find(username);
+        if (account == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在");
+        }
+        storeNewPassword(actor, username, nextPassword, String.valueOf(account.get("passwordHash")), "password_reset");
+    }
+
+    private Map<String, Object> requireAccount(String username) {
+        Map<String, Object> account = mapper.find(username);
+        if (account == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前密码不正确");
+        }
+        return account;
+    }
+
+    private void storeNewPassword(String actor, String username, String nextPassword, String currentHash, String action) {
+        requireStrongPassword(nextPassword, username);
+        if (passwords.matches(nextPassword, currentHash)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新密码不能与当前密码相同");
+        }
+        if (mapper.updatePassword(username, passwords.encode(nextPassword)) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请刷新后重试");
+        }
+        mapper.insertAudit(actor, action, username);
+        log.info("security audit action={} actor={} target={}", action, actor, username);
+    }
+
+    static void requireStrongPassword(String password, String username) {
+        if (password == null || password.length() < 8 || password.length() > 72
+            || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码长度需要在8到72之间");
+        }
+        boolean letter = false;
+        boolean digit = false;
+        for (int i = 0; i < password.length(); i++) {
+            char current = password.charAt(i);
+            if ((current >= 'A' && current <= 'Z') || (current >= 'a' && current <= 'z')) {
+                letter = true;
+            }
+            if (current >= '0' && current <= '9') {
+                digit = true;
+            }
+        }
+        if (!letter || !digit) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码需要同时包含字母和数字");
+        }
+        if (username != null && password.equalsIgnoreCase(username)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码不能与账号相同");
+        }
     }
 
     public static boolean flag(Object value) {

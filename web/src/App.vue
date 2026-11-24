@@ -28,8 +28,12 @@
       <div class="page-heading"><h1>问题处理</h1><p>模拟数据 · 未连接生产系统</p></div>
       <div v-if="error" ref="errorSummary" tabindex="-1" class="error-summary">
         <el-alert :title="error" type="error" :closable="false" show-icon />
-        <button v-if="problem" type="button" @click="openProblem(problem.id)">刷新问题单</button>
+        <button v-if="conflict" type="button" @click="refreshAfterConflict">一键刷新工单</button>
+        <button v-else-if="problem" type="button" @click="openProblem(problem.id)">刷新问题单</button>
       </div>
+      <ProblemBoard :busy="busy" :items="boardItems" :total="boardTotal" :page="boardPage" :has-next="boardHasNext"
+        :selected-id="problem?.id || ''" :categories="boardCategories" :assignees="assignees"
+        @open="openProblem" @search="searchBoard" @prev="prevBoard" @next="nextBoard" />
       <div class="workspace-grid">
         <aside class="sidebar" aria-label="问题与设备">
     <el-card header="问题单与回访">
@@ -84,6 +88,8 @@
         </ul>
       </section>
     </el-card>
+    <PasswordPanel :admin="account?.role === 'admin'" :accounts="accounts" :busy="busy" :notice="passwordNotice"
+      :change-password="changeOwnPassword" :reset-password="resetAccountPassword" />
     <el-card v-if="account?.role === 'admin'" header="账号">
       <form @submit.prevent="addAccount">
         <label for="new-username">新账号</label>
@@ -125,6 +131,7 @@
       <header class="issue-head">
         <p class="issue-kicker">问题单 <strong>{{ orderNumber(problem) }}</strong></p>
         <h2 class="issue-title">{{ problem.title }}</h2>
+        <p v-if="refreshNote" role="status" class="stage-note">{{ refreshNote }}</p>
         <dl class="facts">
           <div><dt>桩编码</dt><dd>{{ problem.device }}</dd></div>
           <div><dt>状态</dt><dd><span class="status-chip" :data-state="problem.state">{{ statusLabel(problem.state) }}</span></dd></div>
@@ -174,7 +181,8 @@
         <el-input id="note" v-model.trim="note" type="textarea" maxlength="1500" />
         <el-button native-type="submit" type="primary" :disabled="busy || !note">保存跟进</el-button>
       </form>
-      <FieldOrders :key="problem.id + ':' + (problem.fieldOrders?.[0]?.state || '')"
+      <FieldOrders :key="problem.id"
+        v-model:number="fieldNumber" v-model:receipt="fieldReceipt" v-model:state="fieldState"
         :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
       <p v-if="problem.state === 'field'" class="stage-note">待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。</p>
       <form v-if="problem.state === 'field' && !fieldInProgress" @submit.prevent="withdrawDispatch">
@@ -237,7 +245,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import logoUrl from './assets/logo-soongo-teal.png'
 import FieldOrders from './components/FieldOrders.vue'
-import { currentAccount, login, logout, addFollowup, assignableAccounts, claimProblem, createAccount, createProblem, dueCallbacks, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, mineProblems, recordFieldResult, scheduleCallback, setAccountEnabled, withdrawField } from './api/workbench'
+import PasswordPanel from './components/PasswordPanel.vue'
+import ProblemBoard from './components/ProblemBoard.vue'
+import { currentAccount, login, logout, addFollowup, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, dueCallbacks, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, mineProblems, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, searchProblems, setAccountEnabled, withdrawField } from './api/workbench'
 
 const query = ref('')
 const title = ref('')
@@ -274,6 +284,19 @@ const handoffReason = ref('')
 const newUsername = ref('')
 const newPassword = ref('')
 const newRole = ref('operator')
+const fieldNumber = ref('')
+const fieldReceipt = ref('')
+const fieldState = ref('complete')
+const conflict = ref(false)
+const refreshNote = ref('')
+const passwordNotice = ref('')
+const boardItems = ref([])
+const boardTotal = ref(0)
+const boardPage = ref(0)
+const boardHasNext = ref(false)
+const boardCategories = ref([])
+const boardFilters = ref(null)
+const boardCursors = ref([null])
 
 function orderNumber(item) {
   return item.displayNumber ? 'AS-' + item.displayNumber : item.id
@@ -298,6 +321,26 @@ function clearAccount() {
   orderId.value = ''
   title.value = ''
   description.value = ''
+  boardItems.value = []
+  boardTotal.value = 0
+  boardFilters.value = null
+  boardPage.value = 0
+  boardCursors.value = [null]
+  passwordNotice.value = ''
+  refreshNote.value = ''
+  conflict.value = false
+}
+
+async function prepareWorkspace() {
+  await loadAccounts()
+  assignees.value = await assignableAccounts()
+  if (!boardFilters.value) {
+    boardFilters.value = { q: '', state: '', owner: '', kind: '', category: '' }
+    boardCursors.value = [null]
+    boardPage.value = 0
+  }
+  await loadBoard()
+  await restoreOrder()
 }
 
 async function restoreOrder() {
@@ -309,8 +352,7 @@ function signIn() {
   return run(async () => {
     try {
       account.value = await login(username.value, password.value)
-      await loadAccounts()
-      await restoreOrder()
+      await prepareWorkspace()
     } finally {
       password.value = ''
     }
@@ -328,13 +370,12 @@ onMounted(async () => {
   window.addEventListener('workbench-session-expired', clearAccount)
   try {
     account.value = await currentAccount()
-    await loadAccounts()
   } catch {
     return
   } finally {
     authReady.value = true
   }
-  await run(restoreOrder)
+  if (account.value) await run(prepareWorkspace)
 })
 onUnmounted(() => window.removeEventListener('workbench-session-expired', clearAccount))
 const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
@@ -362,25 +403,60 @@ const canHandoff = computed(() => problem.value && problem.value.state !== 'reso
 function saveFieldLink(number) {
   return run(async () => {
     await linkFieldOrder(problem.value.id, number, problem.value.version)
+    fieldNumber.value = ''
     await showProblem(problem.value.id)
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 function saveFieldResult(form) {
   return run(async () => {
     await recordFieldResult(problem.value.id, { ...form, expectedVersion: problem.value.version })
+    fieldReceipt.value = ''
     await showProblem(problem.value.id)
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 function statusLabel(state) {
   return { open: '处理中', waiting: '待回访', field: '现场服务', verify: '待验证', triage: '待排查', resolved: '已结案' }[state] || state
 }
 
-async function showProblem(id) {
-  problem.value = await loadProblem(id)
-  orderId.value = orderNumber(problem.value)
-  const task = problem.value.pendingFollowup
+function snapshotDraft() {
+  return {
+    note: note.value,
+    owner: owner.value,
+    dueAt: dueAt.value,
+    nextStep: nextStep.value,
+    outcome: outcome.value,
+    result: result.value,
+    showCallback: showCallback.value,
+    contactedAt: contactedAt.value,
+    evidenceSource: evidenceSource.value,
+    evidence: evidence.value,
+    withdrawReason: withdrawReason.value,
+    handoffTarget: handoffTarget.value,
+    handoffReason: handoffReason.value,
+    fieldNumber: fieldNumber.value,
+    fieldReceipt: fieldReceipt.value,
+    fieldState: fieldState.value
+  }
+}
+
+function textOf(draft) {
+  const parts = []
+  if (draft.note) parts.push('跟进「' + draft.note + '」')
+  if (draft.nextStep || draft.owner) parts.push('回访安排「' + [draft.owner, draft.dueAt, draft.nextStep].filter(Boolean).join(' ') + '」')
+  if (draft.result) parts.push('回访结果「' + draft.result + '」')
+  if (draft.handoffReason || draft.handoffTarget) parts.push('转交「' + [draft.handoffTarget, draft.handoffReason].filter(Boolean).join(' ') + '」')
+  if (draft.withdrawReason) parts.push('撤回原因「' + draft.withdrawReason + '」')
+  if (draft.fieldNumber) parts.push('现场单号「' + draft.fieldNumber + '」')
+  if (draft.fieldReceipt) parts.push('现场回执「' + draft.fieldReceipt + '」')
+  return parts.join('；')
+}
+
+function fillFromServer(current) {
+  const task = current.pendingFollowup
   owner.value = task?.owner || ''
   dueAt.value = task?.dueAt?.replace(' ', 'T').slice(0, 16) || ''
   nextStep.value = task?.nextStep || ''
@@ -391,12 +467,124 @@ async function showProblem(id) {
   contactedAt.value = ''
   evidenceSource.value = ''
   evidence.value = ''
+  fieldNumber.value = ''
+  fieldReceipt.value = ''
+  fieldState.value = 'complete'
+  refreshNote.value = ''
+}
+
+function restoreDraft(draft, current) {
+  const active = current.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state))
+  const notes = []
+  if (current.state === 'resolved') {
+    notes.push('刷新后问题单已结案，跟进、回访、转交、撤回和现场单都不能再提交。')
+    const kept = textOf(draft)
+    if (kept) notes.push('未提交内容仅作保留，无法提交：' + kept)
+    refreshNote.value = notes.join('')
+    return
+  }
+  note.value = draft.note
+  const canCallback = current.state !== 'field' && !active
+  if (canCallback) {
+    owner.value = draft.owner
+    dueAt.value = draft.dueAt
+    nextStep.value = draft.nextStep
+    showCallback.value = draft.showCallback
+    outcome.value = draft.outcome
+    result.value = draft.result
+    contactedAt.value = draft.contactedAt
+    evidenceSource.value = draft.evidenceSource
+    evidence.value = draft.evidence
+  } else if (draft.nextStep || draft.result || draft.owner || draft.dueAt) {
+    notes.push(current.state === 'field'
+      ? '刷新后问题处于现场服务，回访安排和回访结果暂不能提交。'
+      : '刷新后还有未结束的现场单，请先登记结果，回访暂不能提交。')
+    const kept = [draft.owner, draft.dueAt, draft.nextStep, draft.result].filter(Boolean).join(' ')
+    if (kept) notes.push('未提交的回访内容：' + kept + '。')
+  }
+  const handoffOpen = !unowned(current) && (account.value?.role === 'admin' || account.value?.username === current.owner)
+  if (handoffOpen) {
+    const known = assignees.value.some(item => item.username === draft.handoffTarget)
+    handoffTarget.value = known ? draft.handoffTarget : ''
+    handoffReason.value = draft.handoffReason
+    if (draft.handoffTarget && !known) notes.push('原接收人已不在可转交名单中，请重新选择。转交原因仍保留。')
+  } else if (draft.handoffReason || draft.handoffTarget) {
+    notes.push(unowned(current) ? '刷新后问题单仍无主，需要先认领才能转交。' : '刷新后当前账号不能转交这张问题单。')
+    notes.push('未提交的转交：' + [draft.handoffTarget, draft.handoffReason].filter(Boolean).join(' ') + '。')
+  }
+  const canWithdraw = current.state === 'field' && !active
+  if (canWithdraw) withdrawReason.value = draft.withdrawReason
+  else if (draft.withdrawReason) {
+    notes.push(active ? '刷新后已有未结束的现场单，不能撤回待派单。' : '刷新后问题单已不在待派单阶段，不能撤回。')
+    notes.push('未提交的撤回原因：' + draft.withdrawReason + '。')
+  }
+  if (current.state === 'field' && !active) fieldNumber.value = draft.fieldNumber
+  else if (draft.fieldNumber) notes.push('刷新后不能再关联新的现场单。未提交的现场单号：' + draft.fieldNumber + '。')
+  if (current.state === 'field' && active) {
+    fieldReceipt.value = draft.fieldReceipt
+    fieldState.value = draft.fieldState || 'complete'
+  } else if (draft.fieldReceipt) {
+    notes.push('刷新后现场回执不再适用。未提交的回执：' + draft.fieldReceipt + '。')
+  }
+  refreshNote.value = notes.length ? notes.join('') : '已刷新到最新版本，未提交的内容仍留在表单中。'
+}
+
+async function showProblem(id, options) {
+  const preserve = Boolean(options && options.preserveDraft)
+  const draft = preserve ? snapshotDraft() : null
+  problem.value = await loadProblem(id)
+  orderId.value = orderNumber(problem.value)
   history.replaceState(null, '', '?problem=' + encodeURIComponent(orderId.value))
   assignees.value = await assignableAccounts()
+  if (preserve) restoreDraft(draft, problem.value)
+  else fillFromServer(problem.value)
+}
+
+function refreshAfterConflict() {
+  return run(async () => {
+    conflict.value = false
+    await showProblem(problem.value.id, { preserveDraft: true })
+  })
 }
 
 function openProblem(id) {
   return run(() => showProblem(id))
+}
+
+async function loadBoard() {
+  if (!boardFilters.value) return
+  const cursor = boardCursors.value[boardPage.value]
+  const page = await searchProblems({ ...boardFilters.value, cursor, limit: 20 })
+  boardItems.value = page.items || []
+  boardTotal.value = Number(page.total || 0)
+  boardHasNext.value = Boolean(page.nextCursor)
+  boardCategories.value = page.categories || []
+  if (page.nextCursor) boardCursors.value[boardPage.value + 1] = page.nextCursor
+}
+
+function searchBoard(filters) {
+  return run(async () => {
+    boardFilters.value = filters
+    boardCursors.value = [null]
+    boardPage.value = 0
+    await loadBoard()
+  })
+}
+
+function prevBoard() {
+  return run(async () => {
+    if (boardPage.value === 0) return
+    boardPage.value -= 1
+    await loadBoard()
+  })
+}
+
+function nextBoard() {
+  return run(async () => {
+    if (!boardHasNext.value) return
+    boardPage.value += 1
+    await loadBoard()
+  })
 }
 
 function refreshDue(scope) {
@@ -421,7 +609,8 @@ function withdrawDispatch() {
     await withdrawField(id, withdrawReason.value, problem.value.version)
     withdrawReason.value = ''
     await showProblem(id)
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 function claim() {
@@ -430,7 +619,8 @@ function claim() {
     await claimProblem(id, problem.value.version)
     await showProblem(id)
     if (mine.value) await loadMine()
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 function handoff() {
@@ -440,7 +630,8 @@ function handoff() {
     handoffReason.value = ''
     await showProblem(id)
     if (mine.value) await loadMine()
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 async function loadAccounts() {
@@ -475,7 +666,8 @@ function saveSchedule() {
     await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value, expectedVersion: problem.value.version })
     await showProblem(id)
     if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
 function saveOutcome() {
@@ -485,22 +677,46 @@ function saveOutcome() {
       evidenceSource: evidenceSource.value || null, evidence: evidence.value || null, expectedVersion: problem.value.version })
     await showProblem(id)
     if (dueOrders.value) dueOrders.value = (await dueCallbacks('team')).items || []
-  })
+    await loadBoard()
+  }, { conflict: true })
 }
 
-async function run(action) {
-  if (busy.value) return
+async function run(action, options) {
+  if (busy.value) return false
   busy.value = true
   error.value = ''
+  conflict.value = false
   try {
     await action()
+    return true
   } catch (failure) {
     error.value = failure.message
+    conflict.value = Boolean(options && options.conflict && failure.status === 409 && problem.value)
     await nextTick()
     if (errorSummary.value) errorSummary.value.focus()
+    return false
   } finally {
     busy.value = false
   }
+}
+
+function changeOwnPassword(form) {
+  return run(async () => {
+    await changePassword(form)
+    passwordNotice.value = '密码已更新。当前会话保持登录，其他设备需要用新密码重新登录。'
+  })
+}
+
+function resetAccountPassword(form) {
+  return run(async () => {
+    await resetAccountPasswordApi(form.username, form.password)
+    if (form.username === account.value?.username) {
+      passwordNotice.value = '已重置自己的密码。当前会话保持登录，其他设备需要用新密码重新登录。'
+    } else {
+      passwordNotice.value = '已重置该账号的密码。该账号的旧会话会在下次请求时失效。'
+    }
+    await loadAccounts()
+  })
 }
 
 function search() {
@@ -531,8 +747,9 @@ function saveNote() {
     const id = problem.value.id
     await addFollowup(id, note.value, problem.value.version)
     note.value = ''
-    problem.value = await loadProblem(id)
-  })
+    await showProblem(id)
+    await loadBoard()
+  }, { conflict: true })
 }
 </script>
 
@@ -574,6 +791,15 @@ h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: 22px; font-weight: 700; }
 h2 { margin-bottom: 8px; font-size: 16px; }
 button, input, select, textarea { font: inherit; }
+button:not(.el-button) {
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--brand);
+  background: #fff;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  cursor: pointer;
+}
 :focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 .topbar { position: sticky; top: 0; z-index: 2; min-height: 56px; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); color: var(--ink); border-bottom: 1px solid var(--line); }
 .brand, .account { display: flex; align-items: center; gap: 10px; min-width: 0; }

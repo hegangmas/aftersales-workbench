@@ -57,6 +57,17 @@ public class ProblemController {
         return problems.mine(cursor, limit);
     }
 
+    @GetMapping("/board")
+    public Map<String, Object> board(@RequestParam(required = false) String state,
+                                     @RequestParam(required = false) String owner,
+                                     @RequestParam(required = false) String category,
+                                     @RequestParam(required = false) String kind,
+                                     @RequestParam(required = false) String q,
+                                     @RequestParam(required = false) String cursor,
+                                     @RequestParam(defaultValue = "20") int limit) {
+        return problems.board(state, owner, category, kind, q, cursor, limit);
+    }
+
     @PostMapping("/{id}/callback")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void schedule(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,

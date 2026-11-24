@@ -46,7 +46,10 @@ async function request(path, body, key) {
       window.dispatchEvent(new Event('workbench-session-expired'))
     }
     if (response.status === 403) csrfToken = undefined
-    throw new Error(await failureMessage(response))
+    const message = await failureMessage(response)
+    const error = new Error(message)
+    error.status = response.status
+    throw error
   }
   return response.status === 204 ? undefined : response.json()
 }
@@ -59,6 +62,16 @@ export const addFollowup = (id, note, version) => request('/problems/' + encodeU
 export const findProblems = device => request('/problems?device=' + encodeURIComponent(device))
 export const dueCallbacks = scope => request('/problems/due?scope=' + encodeURIComponent(scope || 'team') + '&limit=20')
 export const mineProblems = () => request('/problems/mine?limit=20')
+export function searchProblems(filters) {
+  const query = new URLSearchParams()
+  Object.keys(filters || {}).forEach(key => {
+    const value = filters[key]
+    if (value !== undefined && value !== null && String(value) !== '') query.set(key, value)
+  })
+  return request('/problems/board?' + query.toString())
+}
+export const changePassword = form => request('/accounts/password', form)
+export const resetAccountPassword = (username, password) => request('/accounts/' + encodeURIComponent(username) + '/password', { password })
 export const scheduleCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback', form, requestKey())
 export const finishCallback = (id, form) => request('/problems/' + encodeURIComponent(id) + '/callback/result', form, requestKey())
 export const linkFieldOrder = (id, externalNo, version) => request('/problems/' + encodeURIComponent(id) + '/field-orders', { externalNo, expectedVersion: version }, requestKey())

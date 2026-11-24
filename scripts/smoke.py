@@ -218,6 +218,39 @@ assert_safe(request(claim_path + "/followups", 409, {"note": "过期版本", "ex
 assert stale["version"] == request(claim_path)["version"] or True
 due = request("/api/problems/due?scope=team&limit=20")
 assert "items" in due and "nextCursor" in due
+mine_due = request("/api/problems/due?scope=mine&limit=20")
+assert "items" in mine_due and "nextCursor" in mine_due
+
+
+def board(**params):
+    query = urllib.parse.urlencode({key: value for key, value in params.items() if value not in (None, "")})
+    return request("/api/problems/board?" + query)
+
+
+fresh = request("/api/problems", 201, {
+    "device": device["device"], "title": "总表无主 " + created["id"][:8], "description": "历史无主仍显示未认领"
+})
+fresh_detail = request("/api/problems/" + fresh["id"])
+assert fresh_detail["owner"] == "early"
+found = board(q="AS-" + str(fresh_detail["displayNumber"]))
+assert found["items"][0]["id"] == fresh["id"] and found["items"][0]["owner"] == "early"
+digits = board(q=str(fresh_detail["displayNumber"]))
+assert any(item["id"] == fresh["id"] for item in digits["items"])
+titled = board(q=fresh_detail["title"])
+assert titled["items"][0]["id"] == fresh["id"]
+assert "displayNumber" in titled["items"][0] and "updatedAt" in titled["items"][0]
+pool = board(owner="early", q=fresh_detail["title"])
+assert pool["items"][0]["owner"] == "early" and pool["total"] >= 1
+by_state = board(state="open", q=fresh_detail["title"])
+assert by_state["items"][0]["state"] == "open"
+by_kind = board(kind="fault", category="充电故障", limit=5)
+assert by_kind["total"] >= 1 and "categories" in by_kind
+page = board(q="SIM-AC-001", limit=1)
+assert len(page["items"]) == 1 and page["nextCursor"]
+page2 = board(q="SIM-AC-001", limit=1, cursor=page["nextCursor"])
+assert page2["items"][0]["id"] != page["items"][0]["id"]
+assert_safe(request("/api/problems/board?state=nope", 400), "状态")
+print("团队总表、待认领和分页通过")
 admin_client, admin_csrf = client, csrf
 agent_client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 agent_csrf_req = urllib.request.Request(BASE + "/api/session/csrf")
@@ -248,6 +281,85 @@ method_payload = json.loads(method_body)
 assert_safe(method_payload, "不支持该请求方法")
 assert "POST" in method_headers.get("Allow", "")
 print("不支持的方法返回405")
+
+
+def login_client(username, password):
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    with opener.open(urllib.request.Request(BASE + "/api/session/csrf"), timeout=10) as response:
+        token = json.loads(response.read())["token"]
+    body = urllib.parse.urlencode({"username": username, "password": password}).encode()
+    login_request = urllib.request.Request(
+        BASE + "/api/session/login", data=body, headers={"X-CSRF-TOKEN": token})
+    try:
+        with opener.open(login_request, timeout=10) as response:
+            return opener, response.status
+    except urllib.error.HTTPError as exc:
+        return opener, exc.code
+
+
+def strong_password():
+    return secrets.token_hex(6) + "a1"
+
+
+seat = "s" + uuid.uuid4().hex[:8]
+initial_password = strong_password()
+changed_password = strong_password()
+reset_password = strong_password()
+request("/api/accounts", 201, {"username": seat, "password": initial_password, "role": "operator"})
+seat_client, seat_status = login_client(seat, initial_password)
+assert seat_status == 204
+other_client, other_status = login_client(seat, initial_password)
+assert other_status == 204
+saved_client, saved_csrf = client, csrf
+client = seat_client
+csrf = request("/api/session/csrf")["token"]
+assert_safe(request("/api/accounts/" + seat + "/password", 403, {"password": changed_password}), "没有权限")
+assert_safe(request("/api/accounts/password", 400, {
+    "currentPassword": "wrong-pass-1", "nextPassword": changed_password
+}), "当前密码不正确")
+assert_safe(request("/api/accounts/password", 400, {
+    "currentPassword": initial_password, "nextPassword": "short1"
+}), "密码长度")
+assert_safe(request("/api/accounts/password", 400, {
+    "currentPassword": initial_password, "nextPassword": "longletters"
+}), "字母和数字")
+request("/api/accounts/password", 204, {"currentPassword": initial_password, "nextPassword": changed_password})
+assert request("/api/session")["username"] == seat
+_, old_status = login_client(seat, initial_password)
+assert old_status == 401
+_, new_status = login_client(seat, changed_password)
+assert new_status == 204
+other_probe = urllib.request.Request(BASE + "/api/session")
+try:
+    with other_client.open(other_probe, timeout=10) as response:
+        raise AssertionError("other session stayed open")
+except urllib.error.HTTPError as exc:
+    assert exc.code == 401
+client, csrf = saved_client, None
+csrf = request("/api/session/csrf")["token"]
+anon = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+with anon.open(urllib.request.Request(BASE + "/api/session/csrf"), timeout=10) as response:
+    anon_csrf = json.loads(response.read())["token"]
+anon_body = json.dumps({"password": reset_password}).encode()
+anon_request = urllib.request.Request(
+    BASE + "/api/accounts/" + seat + "/password", data=anon_body,
+    headers={"Content-Type": "application/json", "X-CSRF-TOKEN": anon_csrf})
+try:
+    with anon.open(anon_request, timeout=10) as response:
+        raise AssertionError("anonymous reset should fail")
+except urllib.error.HTTPError as exc:
+    assert exc.code == 401
+request("/api/accounts/" + seat + "/password", 204, {"password": reset_password})
+try:
+    with seat_client.open(urllib.request.Request(BASE + "/api/session"), timeout=10) as response:
+        raise AssertionError("reset session stayed open")
+except urllib.error.HTTPError as exc:
+    assert exc.code == 401
+_, reset_status = login_client(seat, reset_password)
+assert reset_status == 204
+_, stale_status = login_client(seat, changed_password)
+assert stale_status == 401
+print("改密、重置和会话失效通过")
 
 request("/api/session/logout", 204, {})
 request("/api/session", 401)
