@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -34,6 +35,9 @@ public class ProblemService {
     static final String HANDLER_REQUIRED = "只有当前负责人或管理员可以处理这张问题单";
     private static final Set<String> STATES = new HashSet<String>(Arrays.asList(
         "open", "triage", "waiting", "field", "verify", "resolved", "answered", "referred"));
+    private static final Set<String> BUCKETS = new HashSet<String>(Arrays.asList(
+        "unclaimed", "open", "triage", "waiting", "fieldPending", "fieldActive",
+        "verify", "resolved", "answered", "referred"));
     private static final Set<String> KINDS = new HashSet<String>(Arrays.asList("fault", "consult", "service"));
     private final ProblemMapper mapper;
     private final DeviceService devices;
@@ -104,14 +108,18 @@ public class ProblemService {
             cursorId = Long.valueOf(parts[1]);
         }
         int mine = "mine".equals(scope) ? 1 : 0;
-        List<Map<String, Object>> rows = mapper.duePage(LocalDateTime.now(BUSINESS_ZONE), mine, actor(),
-            cursorDue, cursorId, size + 1);
-        return page(rows, size, "dueAt", "followupId");
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        String actor = actor();
+        List<Map<String, Object>> rows = mapper.duePage(now, mine, actor, cursorDue, cursorId, size + 1);
+        Map<String, Object> body = page(rows, size, "dueAt", "followupId");
+        body.put("total", Integer.valueOf(mapper.dueCount(now, mine, actor)));
+        return body;
     }
 
     public Map<String, Object> board(String state, String owner, String category, String kind,
-                                    String query, String cursor, int limit) {
+                                    String query, String cursor, int limit, String bucket) {
         int size = pageSize(limit);
+        String bucketFilter = normalizeToken(bucket, BUCKETS, "问题单状态无效");
         String stateFilter = normalizeToken(state, STATES, "问题单状态无效");
         String ownerMode = "all";
         String ownerValue = null;
@@ -152,12 +160,54 @@ public class ProblemService {
             cursorId = parts[1];
         }
         List<Map<String, Object>> rows = mapper.boardPage(stateFilter, ownerMode, ownerValue, categoryFilter,
-            kindFilter, like, number, cursorAt, cursorId, size + 1);
+            kindFilter, bucketFilter, like, number, cursorAt, cursorId, size + 1);
         Map<String, Object> body = page(rows, size, "updatedAt", "id");
         body.put("total", Integer.valueOf(mapper.boardCount(stateFilter, ownerMode, ownerValue,
-            categoryFilter, kindFilter, like, number)));
+            categoryFilter, kindFilter, bucketFilter, like, number)));
         body.put("categories", mapper.categories());
+        body.put("summary", summary());
         return body;
+    }
+
+    private Map<String, Object> summary() {
+        Map<String, Object> counts = mapper.boardSummary();
+        int unclaimed = countOf(counts, "unclaimed");
+        int open = countOf(counts, "openCount");
+        int triage = countOf(counts, "triageCount");
+        int waiting = countOf(counts, "waitingCount");
+        int fieldPending = countOf(counts, "fieldPending");
+        int fieldActive = countOf(counts, "fieldActive");
+        int verify = countOf(counts, "verifyCount");
+        int resolved = countOf(counts, "resolvedCount");
+        int answered = countOf(counts, "answeredCount");
+        int referred = countOf(counts, "referredCount");
+        Map<String, Object> states = new LinkedHashMap<String, Object>();
+        states.put("unclaimed", Integer.valueOf(unclaimed));
+        states.put("open", Integer.valueOf(open));
+        states.put("triage", Integer.valueOf(triage));
+        states.put("waiting", Integer.valueOf(waiting));
+        states.put("fieldPending", Integer.valueOf(fieldPending));
+        states.put("fieldActive", Integer.valueOf(fieldActive));
+        states.put("verify", Integer.valueOf(verify));
+        states.put("resolved", Integer.valueOf(resolved));
+        states.put("answered", Integer.valueOf(answered));
+        states.put("referred", Integer.valueOf(referred));
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        String actor = actor();
+        Map<String, Object> summary = new LinkedHashMap<String, Object>();
+        summary.put("total", Integer.valueOf(countOf(counts, "total")));
+        summary.put("due", Integer.valueOf(mapper.dueCount(now, 0, actor)));
+        summary.put("dueMine", Integer.valueOf(mapper.dueCount(now, 1, actor)));
+        summary.put("mine", Integer.valueOf(mapper.mineCount(actor)));
+        summary.put("states", states);
+        return summary;
+    }
+
+    private static int countOf(Map<String, Object> row, String key) {
+        if (row == null || row.get(key) == null) {
+            return 0;
+        }
+        return ((Number) row.get(key)).intValue();
     }
 
     public Map<String, Object> mine(String cursor, int limit) {
@@ -172,8 +222,11 @@ public class ProblemService {
             cursorUpdated = LocalDateTime.parse(parts[0]);
             cursorId = parts[1];
         }
-        List<Map<String, Object>> rows = mapper.minePage(actor(), cursorUpdated, cursorId, size + 1);
-        return page(rows, size, "updatedAt", "id");
+        String actor = actor();
+        List<Map<String, Object>> rows = mapper.minePage(actor, cursorUpdated, cursorId, size + 1);
+        Map<String, Object> body = page(rows, size, "updatedAt", "id");
+        body.put("total", Integer.valueOf(mapper.mineCount(actor)));
+        return body;
     }
 
     @Transactional
@@ -241,18 +294,22 @@ public class ProblemService {
 
     @Transactional
     public void claim(String id, int expectedVersion, String requestId) {
-        if (replay(requestId, digest("claim", id, String.valueOf(expectedVersion)), id)) {
-            return;
-        }
-        Row row = lockRow(id, expectedVersion);
-        if (!row.unowned()) {
+        try {
+            if (replay(requestId, digest("claim", id, String.valueOf(expectedVersion)), id)) {
+                return;
+            }
+            Row row = lockRow(id, expectedVersion);
+            if (!row.unowned()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "问题单已有负责人，请刷新");
+            }
+            if (mapper.assignOwner(id, actor(), row.version) != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+            }
+            mapper.insertOwnership(id, actor(), row.owner, actor(), "claim", "");
+            mapper.insertActivity(id, actor(), "claim", "认领问题单");
+        } catch (PessimisticLockingFailureException locked) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "问题单已有负责人，请刷新");
         }
-        if (mapper.assignOwner(id, actor(), row.version) != 1) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
-        }
-        mapper.insertOwnership(id, actor(), row.owner, actor(), "claim", "");
-        mapper.insertActivity(id, actor(), "claim", "认领问题单");
     }
 
     @Transactional

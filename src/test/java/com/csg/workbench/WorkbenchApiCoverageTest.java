@@ -17,6 +17,7 @@ import com.jayway.jsonpath.JsonPath;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -143,7 +144,56 @@ class WorkbenchApiCoverageTest {
             .andReturn().getResponse().getContentAsString().contains("\"nextCursor\""));
         mvc.perform(get("/api/problems/due").session(session).param("scope", "mine").param("limit", "20"))
             .andExpect(status().isOk());
+        String overview = read(session, "/api/problems/board?limit=1");
+        assertSummaryClosed(overview);
+        assertEquals(num(overview, "$.summary.total"), num(overview, "$.total"));
+        assertEquals(num(overview, "$.summary.due"), num(read(session, "/api/problems/due?scope=team&limit=1"), "$.total"));
+        assertEquals(num(overview, "$.summary.dueMine"), num(read(session, "/api/problems/due?scope=mine&limit=1"), "$.total"));
+        assertEquals(num(overview, "$.summary.mine"), num(read(session, "/api/problems/mine?limit=1"), "$.total"));
+        mvc.perform(get("/api/problems/board").session(session).param("bucket", "nope"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("问题单状态无效"));
         mvc.perform(get("/api/problems/board")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void summaryBucketsMatchTheSameReadQuery() throws Exception {
+        MockHttpSession session = login("operator", PASSWORD);
+        String mark = "sum" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String early = createProblem(session, mark + "无主");
+        String owned = createProblem(session, mark + "处理");
+        send(session, "/api/problems/" + owned + "/claim", versionBody(session, owned), 204);
+        String pending = createProblem(session, mark + "待派");
+        send(session, "/api/problems/" + pending + "/claim", versionBody(session, pending), 204);
+        jdbc.update("UPDATE problem SET state = 'field' WHERE id = ?", pending);
+        String active = createProblem(session, mark + "现场");
+        send(session, "/api/problems/" + active + "/claim", versionBody(session, active), 204);
+        jdbc.update("UPDATE problem SET state = 'field' WHERE id = ?", active);
+        jdbc.update("INSERT INTO field_order (problem_id, external_no, state, receipt) VALUES (?, ?, 'linked', '')",
+            active, "SIM-SUM-" + mark);
+
+        String overview = read(session, "/api/problems/board?limit=1");
+        assertSummaryClosed(overview);
+        for (String bucket : new String[] {
+            "unclaimed", "open", "triage", "waiting", "fieldPending", "fieldActive",
+            "verify", "resolved", "answered", "referred"}) {
+            assertEquals(num(overview, "$.summary.states." + bucket),
+                num(read(session, "/api/problems/board?bucket=" + bucket + "&limit=1"), "$.total"), bucket);
+        }
+        String pool = read(session, "/api/problems/board?bucket=unclaimed&q=" + mark + "&limit=20");
+        assertTrue(ids(pool).contains(early));
+        assertFalse(ids(pool).contains(owned));
+        String handling = read(session, "/api/problems/board?bucket=open&q=" + mark + "&limit=20");
+        assertTrue(ids(handling).contains(owned));
+        assertFalse(ids(handling).contains(early));
+        Map<String, Object> pendingRow = row(read(session, "/api/problems/board?bucket=fieldPending&q=" + mark + "&limit=20"), pending);
+        Map<String, Object> activeRow = row(read(session, "/api/problems/board?bucket=fieldActive&q=" + mark + "&limit=20"), active);
+        assertEquals(0, ((Number) pendingRow.get("activeFieldOrders")).intValue());
+        assertTrue(((Number) activeRow.get("activeFieldOrders")).intValue() > 0);
+        assertTrue(pendingRow.get("version") instanceof Number);
+        mvc.perform(get("/api/problems/" + early).session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.category").value("充电故障"))
+            .andExpect(jsonPath("$.kind").value("fault"));
     }
 
     @Test
@@ -300,6 +350,30 @@ class WorkbenchApiCoverageTest {
 
     private static List<String> ids(String json) {
         return JsonPath.read(json, "$.items[*].id");
+    }
+
+    private static int num(String json, String path) {
+        return ((Number) JsonPath.read(json, path)).intValue();
+    }
+
+    private static void assertSummaryClosed(String json) {
+        int summed = 0;
+        for (String key : new String[] {
+            "unclaimed", "open", "triage", "waiting", "fieldPending", "fieldActive",
+            "verify", "resolved", "answered", "referred"}) {
+            summed += num(json, "$.summary.states." + key);
+        }
+        assertEquals(num(json, "$.summary.total"), summed);
+    }
+
+    private static Map<String, Object> row(String json, String id) {
+        List<Map<String, Object>> items = JsonPath.read(json, "$.items");
+        for (Map<String, Object> item : items) {
+            if (id.equals(item.get("id"))) {
+                return item;
+            }
+        }
+        throw new AssertionError("missing row");
     }
 
     private static String ownerOf(String json, String id) {

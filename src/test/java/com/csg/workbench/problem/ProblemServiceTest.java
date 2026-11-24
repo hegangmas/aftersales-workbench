@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -159,13 +160,66 @@ class ProblemServiceTest {
     @Test
     void boardRejectsUnknownFiltersBeforeQuery() {
         ResponseStatusException state = assertThrows(ResponseStatusException.class,
-            () -> service.board("nope", "all", null, null, null, null, 20));
+            () -> service.board("nope", "all", null, null, null, null, 20, null));
         assertEquals(HttpStatus.BAD_REQUEST, state.getStatus());
         assertEquals("问题单状态无效", state.getReason());
+        ResponseStatusException bucket = assertThrows(ResponseStatusException.class,
+            () -> service.board(null, "all", null, null, null, null, 20, "drop"));
+        assertEquals("问题单状态无效", bucket.getReason());
         ResponseStatusException owner = assertThrows(ResponseStatusException.class,
-            () -> service.board(null, "bad owner", null, null, null, null, 20));
+            () -> service.board(null, "bad owner", null, null, null, null, 20, "open"));
         assertEquals("负责人筛选无效", owner.getReason());
-        verify(mapper, never()).boardPage(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+        verify(mapper, never()).boardPage(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+        verify(mapper, never()).boardSummary();
+    }
+
+    @Test
+    void boardSummaryUsesSameBucketCountsAsTheListTotal() {
+        when(mapper.boardPage(nullable(String.class), nullable(String.class), nullable(String.class),
+            nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class),
+            nullable(Long.class), nullable(java.time.LocalDateTime.class), nullable(String.class), anyInt()))
+            .thenReturn(Collections.<Map<String, Object>>emptyList());
+        when(mapper.boardCount(nullable(String.class), nullable(String.class), nullable(String.class),
+            nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class),
+            nullable(Long.class))).thenReturn(6);
+        when(mapper.categories()).thenReturn(Collections.<String>emptyList());
+        Map<String, Object> counts = new LinkedHashMap<String, Object>();
+        counts.put("total", Integer.valueOf(6));
+        counts.put("unclaimed", Integer.valueOf(1));
+        counts.put("openCount", Integer.valueOf(2));
+        counts.put("triageCount", Integer.valueOf(0));
+        counts.put("waitingCount", Integer.valueOf(0));
+        counts.put("fieldPending", Integer.valueOf(1));
+        counts.put("fieldActive", Integer.valueOf(1));
+        counts.put("verifyCount", Integer.valueOf(0));
+        counts.put("resolvedCount", Integer.valueOf(1));
+        counts.put("answeredCount", Integer.valueOf(0));
+        counts.put("referredCount", Integer.valueOf(0));
+        when(mapper.boardSummary()).thenReturn(counts);
+        when(mapper.dueCount(any(), eq(0), eq("operator.1"))).thenReturn(4);
+        when(mapper.dueCount(any(), eq(1), eq("operator.1"))).thenReturn(1);
+        when(mapper.mineCount("operator.1")).thenReturn(3);
+
+        Map<String, Object> body = service.board(null, null, null, null, null, null, 20, "fieldPending");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) body.get("summary");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> states = (Map<String, Object>) summary.get("states");
+        int summed = 0;
+        for (Object value : states.values()) {
+            summed += ((Number) value).intValue();
+        }
+        assertEquals(Integer.valueOf(6), summary.get("total"));
+        assertEquals(6, summed);
+        assertEquals(Integer.valueOf(1), states.get("unclaimed"));
+        assertEquals(Integer.valueOf(1), states.get("fieldPending"));
+        assertEquals(Integer.valueOf(1), states.get("fieldActive"));
+        assertEquals(Integer.valueOf(4), summary.get("due"));
+        assertEquals(Integer.valueOf(1), summary.get("dueMine"));
+        assertEquals(Integer.valueOf(3), summary.get("mine"));
+        assertEquals(Integer.valueOf(6), body.get("total"));
+        verify(mapper).boardPage(isNull(), eq("all"), isNull(), isNull(), isNull(), eq("fieldPending"),
+            isNull(), isNull(), isNull(), isNull(), eq(21));
     }
 
     @Test

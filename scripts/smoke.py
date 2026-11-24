@@ -250,6 +250,20 @@ assert len(page["items"]) == 1 and page["nextCursor"]
 page2 = board(q="SIM-AC-001", limit=1, cursor=page["nextCursor"])
 assert page2["items"][0]["id"] != page["items"][0]["id"]
 assert_safe(request("/api/problems/board?state=nope", 400), "状态")
+assert_safe(request("/api/problems/board?bucket=nope", 400), "状态")
+overview = board(limit=1)
+summary = overview["summary"]
+states = summary["states"]
+assert summary["total"] == overview["total"]
+assert sum(states.values()) == summary["total"]
+for bucket in (
+    "unclaimed", "open", "triage", "waiting", "fieldPending", "fieldActive",
+    "verify", "resolved", "answered", "referred",
+):
+    assert board(bucket=bucket, limit=1)["total"] == states[bucket]
+assert summary["due"] == request("/api/problems/due?scope=team&limit=1")["total"]
+assert summary["dueMine"] == request("/api/problems/due?scope=mine&limit=1")["total"]
+assert summary["mine"] == request("/api/problems/mine?limit=1")["total"]
 print("团队总表、待认领和分页通过")
 admin_client, admin_csrf = client, csrf
 agent_client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))

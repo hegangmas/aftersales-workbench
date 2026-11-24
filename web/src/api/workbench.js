@@ -67,8 +67,19 @@ export const loadProblem = id => request('/problems/' + encodeURIComponent(id))
 export const addFollowup = (id, note, version) => request('/problems/' + encodeURIComponent(id) + '/followups', { note, expectedVersion: version }, requestKey())
 
 export const findProblems = device => request('/problems?device=' + encodeURIComponent(device))
-export const dueCallbacks = scope => request('/problems/due?scope=' + encodeURIComponent(scope || 'team') + '&limit=20')
-export const mineProblems = () => request('/problems/mine?limit=20')
+export function dueCallbacks(scope, cursor) {
+  const query = new URLSearchParams()
+  query.set('scope', scope || 'team')
+  query.set('limit', '20')
+  if (cursor) query.set('cursor', cursor)
+  return request('/problems/due?' + query.toString())
+}
+export function mineProblems(cursor) {
+  const query = new URLSearchParams()
+  query.set('limit', '20')
+  if (cursor) query.set('cursor', cursor)
+  return request('/problems/mine?' + query.toString())
+}
 export function searchProblems(filters) {
   const query = new URLSearchParams()
   Object.keys(filters || {}).forEach(key => {

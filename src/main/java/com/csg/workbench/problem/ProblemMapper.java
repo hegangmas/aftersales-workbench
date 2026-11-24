@@ -22,7 +22,7 @@ public interface ProblemMapper {
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
     @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState, "
-        + "owner, version FROM problem WHERE id = #{id}")
+        + "category, kind, owner, version FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
 
     @Select("SELECT id FROM problem WHERE display_number = #{number}")
@@ -31,7 +31,10 @@ public interface ProblemMapper {
     @Select("SELECT actor, action, note, created_at AS createdAt FROM activity WHERE problem_id = #{id} ORDER BY id")
     List<Map<String, Object>> listActivities(@Param("id") String id);
 
-    @Select("SELECT id, display_number AS displayNumber, title, device, state FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
+    @Select("SELECT id, display_number AS displayNumber, title, device, state, owner, "
+        + "(SELECT COUNT(*) FROM field_order fo WHERE fo.problem_id = problem.id "
+        + "AND fo.state IN ('linked', 'in_progress')) AS activeFieldOrders "
+        + "FROM problem WHERE device = #{device} ORDER BY updated_at DESC LIMIT 30")
     List<Map<String, Object>> findByDevice(@Param("device") String device);
 
     @Select("SELECT state, version, owner FROM problem WHERE id = #{id} FOR UPDATE")
@@ -56,14 +59,40 @@ public interface ProblemMapper {
     @SelectProvider(type = BoardQueries.class, method = "page")
     List<Map<String, Object>> boardPage(@Param("state") String state, @Param("ownerMode") String ownerMode,
                                         @Param("owner") String owner, @Param("category") String category,
-                                        @Param("kind") String kind, @Param("like") String like,
-                                        @Param("number") Long number, @Param("cursorAt") LocalDateTime cursorAt,
-                                        @Param("cursorId") String cursorId, @Param("limit") int limit);
+                                        @Param("kind") String kind, @Param("bucket") String bucket,
+                                        @Param("like") String like, @Param("number") Long number,
+                                        @Param("cursorAt") LocalDateTime cursorAt, @Param("cursorId") String cursorId,
+                                        @Param("limit") int limit);
 
     @SelectProvider(type = BoardQueries.class, method = "count")
     int boardCount(@Param("state") String state, @Param("ownerMode") String ownerMode,
                    @Param("owner") String owner, @Param("category") String category,
-                   @Param("kind") String kind, @Param("like") String like, @Param("number") Long number);
+                   @Param("kind") String kind, @Param("bucket") String bucket,
+                   @Param("like") String like, @Param("number") Long number);
+
+    @Select("SELECT COUNT(*) AS total, "
+        + "COALESCE(SUM(p.state <> 'resolved' AND (p.owner = 'early' OR p.owner = '')), 0) AS unclaimed, "
+        + "COALESCE(SUM(p.state = 'open' AND p.owner <> 'early' AND p.owner <> ''), 0) AS openCount, "
+        + "COALESCE(SUM(p.state = 'triage' AND p.owner <> 'early' AND p.owner <> ''), 0) AS triageCount, "
+        + "COALESCE(SUM(p.state = 'waiting' AND p.owner <> 'early' AND p.owner <> ''), 0) AS waitingCount, "
+        + "COALESCE(SUM(p.state = 'field' AND p.owner <> 'early' AND p.owner <> '' AND NOT EXISTS "
+        + "(SELECT 1 FROM field_order fo WHERE fo.problem_id = p.id AND fo.state IN ('linked', 'in_progress'))), 0) AS fieldPending, "
+        + "COALESCE(SUM(p.state = 'field' AND p.owner <> 'early' AND p.owner <> '' AND EXISTS "
+        + "(SELECT 1 FROM field_order fo WHERE fo.problem_id = p.id AND fo.state IN ('linked', 'in_progress'))), 0) AS fieldActive, "
+        + "COALESCE(SUM(p.state = 'verify' AND p.owner <> 'early' AND p.owner <> ''), 0) AS verifyCount, "
+        + "COALESCE(SUM(p.state = 'resolved'), 0) AS resolvedCount, "
+        + "COALESCE(SUM(p.state = 'answered' AND p.owner <> 'early' AND p.owner <> ''), 0) AS answeredCount, "
+        + "COALESCE(SUM(p.state = 'referred' AND p.owner <> 'early' AND p.owner <> ''), 0) AS referredCount "
+        + "FROM problem p")
+    Map<String, Object> boardSummary();
+
+    @Select("SELECT COUNT(*) FROM followup f JOIN problem p ON p.id = f.problem_id "
+        + "WHERE f.state = 'open' AND f.due_at <= #{now} "
+        + "AND (#{mine} = 0 OR f.owner = #{actor} OR p.owner = #{actor})")
+    int dueCount(@Param("now") LocalDateTime now, @Param("mine") int mine, @Param("actor") String actor);
+
+    @Select("SELECT COUNT(*) FROM problem WHERE owner = #{actor} AND state <> 'resolved' AND owner <> 'early'")
+    int mineCount(@Param("actor") String actor);
 
     @Select("SELECT DISTINCT category FROM problem ORDER BY category")
     List<String> categories();
