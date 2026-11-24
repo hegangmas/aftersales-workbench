@@ -16,9 +16,9 @@
         </g>
       </svg>
       <header class="identity">
-        <div class="logo"><PineMark /></div>
+        <BrandLogo class="identity-logo" variant="white" alt="松果" priority="high" width="168px" />
         <div>
-          <h2>松果售后工作台</h2>
+          <h2>售后工作台</h2>
           <small>SONGGUO AFTERSALES WORKBENCH</small>
         </div>
       </header>
@@ -54,13 +54,13 @@
     </section>
     <section class="login-pane" aria-label="账号登录">
       <header class="compact-brand">
-        <PineMark />
-        <strong>松果售后工作台</strong>
+        <BrandLogo class="compact-logo" variant="teal" alt="松果" width="112px" />
+        <strong>售后工作台</strong>
         <span class="env"><i></i>测试环境</span>
       </header>
       <div class="env desktop-env"><i></i>测试环境</div>
       <div class="form-wrap">
-        <div class="welcome-symbol"><PineMark /></div>
+        <BrandLogo class="welcome-logo" variant="teal" alt="" width="168px" />
         <h1 id="login-title">欢迎登录</h1>
         <p class="subtitle">请使用坐席或管理员账号进入售后工作台</p>
         <div v-if="error" ref="errorBanner" tabindex="-1" class="error-banner">
@@ -102,7 +102,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import PineMark from './PineMark.vue'
+import BrandLogo from './BrandLogo.vue'
 
 defineProps({
   username: { type: String, default: '' },
@@ -155,15 +155,8 @@ defineExpose({
 }
 .arcs { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
 .identity, .brand-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.identity { justify-content: flex-start; gap: 15px; }
-.logo, .welcome-symbol {
-  display: grid;
-  place-items: center;
-  flex: none;
-  border-radius: 14px;
-}
-.logo { width: 49px; height: 54px; border: 1px solid #a5f3dc30; background: linear-gradient(145deg, #ffffff13, #ffffff04); color: #d2fff1; }
-.logo :deep(svg), .welcome-symbol :deep(svg) { width: 28px; height: 34px; }
+.identity { justify-content: flex-start; gap: 16px; min-width: 0; }
+.welcome-logo { margin-bottom: 18px; }
 .identity h2 { margin: 0 0 5px; font-size: 20px; font-weight: 600; letter-spacing: 1px; }
 .identity small { color: #a8c8c2; font-size: 10px; letter-spacing: .12em; }
 .hero { width: min(662px, 100%); margin: auto 0 28px; }
@@ -264,8 +257,7 @@ defineExpose({
     border-bottom: 1px solid #eaeef2;
     color: #102c2b;
   }
-  .compact-brand strong { font-size: 16px; }
-  .compact-brand :deep(svg) { width: 28px; height: 32px; }
+  .compact-brand strong { min-width: 0; font-size: 16px; white-space: nowrap; }
   .env { margin-left: auto; }
   .env i { background: #0d9488; }
   .login-pane { min-height: 100dvh; }

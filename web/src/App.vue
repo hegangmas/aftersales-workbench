@@ -6,16 +6,17 @@
       <button class="menu-button" type="button" aria-label="打开菜单" :aria-expanded="navOpen" aria-controls="workbench-nav" @click="navOpen = true">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
       </button>
-      <strong>松果售后</strong>
+      <BrandLogo class="bar-logo" variant="teal" alt="松果" width="108px" />
+      <strong>售后工作台</strong>
       <span class="test-tag">模拟数据</span>
     </header>
     <button v-if="!wide && navOpen" class="backdrop" type="button" aria-label="关闭菜单" @click="navOpen = false"></button>
     <aside id="workbench-nav" class="sidebar" :class="{ open: navOpen }" :inert="!wide && !navOpen" :role="!wide && navOpen ? 'dialog' : undefined" :aria-modal="!wide && navOpen ? 'true' : undefined" aria-label="工作台导航">
       <div class="brand">
-        <div class="brand-mark"><PineMark /></div>
-        <div>
-          <h1 class="brand-title">松果售后</h1>
-          <div class="brand-sub">工作台 <span class="test-tag">模拟数据</span></div>
+        <BrandLogo class="sidebar-logo" variant="teal" alt="松果" width="156px" />
+        <div class="brand-copy">
+          <h1 class="brand-title">售后工作台</h1>
+          <div class="brand-sub"><span class="test-tag">模拟数据</span></div>
         </div>
       </div>
       <nav class="navs">
@@ -31,14 +32,33 @@
         <button type="button" class="nav-link" :aria-current="currentNav('security') ? 'page' : undefined" @click="showNav('security')"><NavIcon name="security" /><span>安全与改密</span></button>
       </nav>
       <div class="profile">
-        <span class="avatar">{{ initial(account.username) }}</span>
+        <span class="avatar" aria-hidden="true">{{ initial(account.username) }}</span>
         <div class="profile-copy">
-          <div class="profile-name"><span class="who">{{ account.username }}</span><span class="role-pill">{{ account.role === 'admin' ? '管理员' : '坐席' }}</span></div>
-          <div class="profile-id">{{ account.username }}</div>
+          <span
+            ref="whoLabel"
+            class="who"
+            :class="{ truncated: nameOverflows }"
+            :tabindex="nameOverflows ? 0 : undefined"
+            @pointerenter="openNameTip"
+            @pointerleave="scheduleHideNameTip"
+            @focus="openNameTip"
+            @blur="hideNameTip"
+            @click="toggleNameTip"
+          >{{ account.username }}</span>
+          <span class="role-pill">{{ account.role === 'admin' ? '管理员' : '坐席' }}</span>
         </div>
         <button class="exit" type="button" aria-label="退出登录" @click="signOut">
           <NavIcon name="exit" />
         </button>
+        <div
+          v-show="nameTip && nameOverflows"
+          id="account-name-tip"
+          class="name-tip"
+          role="tooltip"
+          aria-hidden="true"
+          @pointerenter="openNameTip"
+          @pointerleave="scheduleHideNameTip"
+        >{{ account.username }}</div>
       </div>
     </aside>
     <main class="workspace">
@@ -83,13 +103,13 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AccountPanel from './components/AccountPanel.vue'
+import BrandLogo from './components/BrandLogo.vue'
 import IntakePanel from './components/IntakePanel.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import NavIcon from './components/NavIcon.vue'
 import PasswordPanel from './components/PasswordPanel.vue'
-import PineMark from './components/PineMark.vue'
 import ProblemBoard from './components/ProblemBoard.vue'
 import ProblemDetail from './components/ProblemDetail.vue'
 import QueueList from './components/QueueList.vue'
@@ -312,8 +332,68 @@ function onMedia(event) {
   wide.value = event.matches
   if (wide.value) navOpen.value = false
 }
+const whoLabel = ref(null)
+const nameOverflows = ref(false)
+const nameTip = ref(false)
+const namePinned = ref(false)
+let nameObserver = null
+let nameHideTimer = 0
+
+function measureName() {
+  const el = whoLabel.value
+  if (!el) {
+    nameOverflows.value = false
+    return
+  }
+  const overflow = el.scrollWidth > el.clientWidth + 1
+  nameOverflows.value = overflow
+  if (!overflow) hideNameTip()
+}
+
+function bindNameObserver() {
+  if (typeof ResizeObserver === 'undefined') return
+  if (!nameObserver) nameObserver = new ResizeObserver(() => measureName())
+  nameObserver.disconnect()
+  if (whoLabel.value) {
+    nameObserver.observe(whoLabel.value)
+    measureName()
+  }
+}
+
+function openNameTip() {
+  if (!nameOverflows.value) return
+  window.clearTimeout(nameHideTimer)
+  nameTip.value = true
+}
+
+function scheduleHideNameTip() {
+  if (namePinned.value) return
+  window.clearTimeout(nameHideTimer)
+  nameHideTimer = window.setTimeout(() => {
+    if (!namePinned.value) nameTip.value = false
+  }, 180)
+}
+
+function toggleNameTip() {
+  if (!nameOverflows.value) return
+  namePinned.value = !namePinned.value
+  nameTip.value = namePinned.value
+}
+
+function hideNameTip(event) {
+  if (event && event.type === 'blur' && whoLabel.value && document.activeElement === whoLabel.value) return
+  namePinned.value = false
+  nameTip.value = false
+  window.clearTimeout(nameHideTimer)
+}
+
 function onKey(event) {
-  if (event.key === 'Escape') navOpen.value = false
+  if (event.key !== 'Escape') return
+  if (nameTip.value) {
+    hideNameTip()
+    return
+  }
+  navOpen.value = false
 }
 
 onMounted(async () => {
@@ -327,6 +407,7 @@ onMounted(async () => {
   mediaQuery.addEventListener('change', onMedia)
   window.addEventListener('keydown', onKey)
   window.addEventListener('workbench-session-expired', clearAccount)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => measureName())
   try {
     account.value = await currentAccount()
   } catch (failure) {
@@ -336,10 +417,17 @@ onMounted(async () => {
   }
   if (account.value) await run(prepareWorkspace)
 })
+watch(account, async () => {
+  await nextTick()
+  bindNameObserver()
+})
+
 onUnmounted(() => {
   window.removeEventListener('workbench-session-expired', clearAccount)
   window.removeEventListener('keydown', onKey)
   if (mediaQuery) mediaQuery.removeEventListener('change', onMedia)
+  if (nameObserver) nameObserver.disconnect()
+  window.clearTimeout(nameHideTimer)
 })
 
 const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
