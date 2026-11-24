@@ -1,5 +1,6 @@
 package com.csg.workbench.account;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.annotations.Insert;
@@ -31,4 +32,14 @@ public interface AccountMapper {
 
     @Select("SELECT COUNT(*) FROM account WHERE role = 'admin' AND enabled = 1")
     int enabledAdmins();
+
+    @Update("UPDATE account SET password_hash = #{hash}, credentials_changed_at = CURRENT_TIMESTAMP(6) "
+        + "WHERE username = #{username}")
+    int updatePassword(@Param("username") String username, @Param("hash") String hash);
+
+    @Select("SELECT credentials_changed_at FROM account WHERE username = #{username}")
+    LocalDateTime credentialsChangedAt(@Param("username") String username);
+
+    @Insert("INSERT INTO security_audit (actor, action, target) VALUES (#{actor}, #{action}, #{target})")
+    void insertAudit(@Param("actor") String actor, @Param("action") String action, @Param("target") String target);
 }

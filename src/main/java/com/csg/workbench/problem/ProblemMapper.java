@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.Update;
 import java.time.LocalDateTime;
 
@@ -51,6 +52,21 @@ public interface ProblemMapper {
     List<Map<String, Object>> duePage(@Param("now") LocalDateTime now, @Param("mine") int mine,
                                       @Param("actor") String actor, @Param("cursorDue") LocalDateTime cursorDue,
                                       @Param("cursorId") Long cursorId, @Param("limit") int limit);
+
+    @SelectProvider(type = BoardQueries.class, method = "page")
+    List<Map<String, Object>> boardPage(@Param("state") String state, @Param("ownerMode") String ownerMode,
+                                        @Param("owner") String owner, @Param("category") String category,
+                                        @Param("kind") String kind, @Param("like") String like,
+                                        @Param("number") Long number, @Param("cursorAt") LocalDateTime cursorAt,
+                                        @Param("cursorId") String cursorId, @Param("limit") int limit);
+
+    @SelectProvider(type = BoardQueries.class, method = "count")
+    int boardCount(@Param("state") String state, @Param("ownerMode") String ownerMode,
+                   @Param("owner") String owner, @Param("category") String category,
+                   @Param("kind") String kind, @Param("like") String like, @Param("number") Long number);
+
+    @Select("SELECT DISTINCT category FROM problem ORDER BY category")
+    List<String> categories();
 
     @Select("SELECT id, display_number AS displayNumber, title, device, state, owner, updated_at AS updatedAt "
         + "FROM problem WHERE owner = #{actor} AND state <> 'resolved' AND owner <> 'early' "

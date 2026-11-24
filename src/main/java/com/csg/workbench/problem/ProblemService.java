@@ -5,12 +5,17 @@ import com.csg.workbench.account.AccountService;
 import com.csg.workbench.device.DeviceService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -25,6 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProblemService {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
     private static final String VERSION_CONFLICT = "工单已被他人更新，请刷新后重试";
+    private static final Set<String> STATES = new HashSet<String>(Arrays.asList(
+        "open", "triage", "waiting", "field", "verify", "resolved", "answered", "referred"));
+    private static final Set<String> KINDS = new HashSet<String>(Arrays.asList("fault", "consult", "service"));
     private final ProblemMapper mapper;
     private final DeviceService devices;
     private final AccountMapper accounts;
@@ -96,6 +104,57 @@ public class ProblemService {
         List<Map<String, Object>> rows = mapper.duePage(LocalDateTime.now(BUSINESS_ZONE), mine, actor(),
             cursorDue, cursorId, size + 1);
         return page(rows, size, "dueAt", "followupId");
+    }
+
+    public Map<String, Object> board(String state, String owner, String category, String kind,
+                                    String query, String cursor, int limit) {
+        int size = pageSize(limit);
+        String stateFilter = normalizeToken(state, STATES, "问题单状态无效");
+        String ownerMode = "all";
+        String ownerValue = null;
+        String ownerText = owner == null ? "" : owner.trim();
+        if (ownerText.isEmpty() || "all".equals(ownerText)) {
+            ownerMode = "all";
+        } else if ("early".equals(ownerText)) {
+            ownerMode = "early";
+        } else if (ownerText.matches("[a-zA-Z0-9_.-]{1,20}")) {
+            ownerMode = "user";
+            ownerValue = ownerText;
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "负责人筛选无效");
+        }
+        String categoryFilter = blankToNull(category);
+        if (categoryFilter != null && (categoryFilter.length() > 80 || categoryFilter.indexOf('%') >= 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "故障分类无效");
+        }
+        String kindFilter = normalizeToken(kind, KINDS, "问题类型无效");
+        String text = query == null ? "" : query.trim();
+        if (text.length() > 80) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "搜索关键字过长");
+        }
+        String like = text.isEmpty() ? null : likePattern(text);
+        Long number = text.isEmpty() ? null : shortNumber(text);
+        LocalDateTime cursorAt = null;
+        String cursorId = null;
+        if (cursor != null && !cursor.trim().isEmpty()) {
+            String[] parts = cursor.split("\\|", 2);
+            if (parts.length != 2 || parts[1].isEmpty() || parts[1].length() > 36) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
+            }
+            try {
+                cursorAt = LocalDateTime.parse(parts[0]);
+            } catch (DateTimeException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
+            }
+            cursorId = parts[1];
+        }
+        List<Map<String, Object>> rows = mapper.boardPage(stateFilter, ownerMode, ownerValue, categoryFilter,
+            kindFilter, like, number, cursorAt, cursorId, size + 1);
+        Map<String, Object> body = page(rows, size, "updatedAt", "id");
+        body.put("total", Integer.valueOf(mapper.boardCount(stateFilter, ownerMode, ownerValue,
+            categoryFilter, kindFilter, like, number)));
+        body.put("categories", mapper.categories());
+        return body;
     }
 
     public Map<String, Object> mine(String cursor, int limit) {
@@ -403,8 +462,55 @@ public class ProblemService {
         return false;
     }
 
+    private static String normalizeToken(String value, Set<String> allowed, String message) {
+        String text = blankToNull(value);
+        if (text == null || "all".equals(text)) {
+            return null;
+        }
+        if (!allowed.contains(text)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+        return text;
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    static String likePattern(String raw) {
+        StringBuilder pattern = new StringBuilder("%");
+        for (int i = 0; i < raw.length(); i++) {
+            char current = raw.charAt(i);
+            if (current == '\\' || current == '%' || current == '_') {
+                pattern.append('\\');
+            }
+            pattern.append(current);
+        }
+        pattern.append('%');
+        return pattern.toString();
+    }
+
+    static Long shortNumber(String query) {
+        String value = query.toUpperCase(Locale.ROOT);
+        if (value.startsWith("AS-")) {
+            value = value.substring(3);
+        }
+        if (!value.matches("[0-9]{1,18}")) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException invalid) {
+            return null;
+        }
+    }
+
     private String resolveReference(String reference) {
-        String value = reference.toUpperCase(java.util.Locale.ROOT);
+        String value = reference.toUpperCase(Locale.ROOT);
         if (!value.matches("(AS-)?[0-9]{1,18}")) {
             return reference;
         }

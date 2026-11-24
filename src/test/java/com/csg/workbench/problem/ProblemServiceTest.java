@@ -157,6 +157,27 @@ class ProblemServiceTest {
     }
 
     @Test
+    void boardRejectsUnknownFiltersBeforeQuery() {
+        ResponseStatusException state = assertThrows(ResponseStatusException.class,
+            () -> service.board("nope", "all", null, null, null, null, 20));
+        assertEquals(HttpStatus.BAD_REQUEST, state.getStatus());
+        assertEquals("问题单状态无效", state.getReason());
+        ResponseStatusException owner = assertThrows(ResponseStatusException.class,
+            () -> service.board(null, "bad owner", null, null, null, null, 20));
+        assertEquals("负责人筛选无效", owner.getReason());
+        verify(mapper, never()).boardPage(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void shortNumberAndLikeStayLiteral() {
+        assertEquals(Long.valueOf(12L), ProblemService.shortNumber("as-12"));
+        assertEquals(Long.valueOf(12L), ProblemService.shortNumber("12"));
+        assertEquals(null, ProblemService.shortNumber("SIM-AC-001"));
+        assertEquals("%100\\%%", ProblemService.likePattern("100%"));
+        assertEquals("%a\\_b%", ProblemService.likePattern("a_b"));
+    }
+
+    @Test
     void shortNumberAndUuidBothResolve() {
         Map<String, Object> found = new LinkedHashMap<String, Object>();
         found.put("id", ID);
