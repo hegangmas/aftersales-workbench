@@ -64,8 +64,9 @@ public class ProblemController {
                                      @RequestParam(required = false) String kind,
                                      @RequestParam(required = false) String q,
                                      @RequestParam(required = false) String cursor,
-                                     @RequestParam(defaultValue = "20") int limit) {
-        return problems.board(state, owner, category, kind, q, cursor, limit);
+                                     @RequestParam(defaultValue = "20") int limit,
+                                     @RequestParam(required = false) String bucket) {
+        return problems.board(state, owner, category, kind, q, cursor, limit, bucket);
     }
 
     @PostMapping("/{id}/callback")

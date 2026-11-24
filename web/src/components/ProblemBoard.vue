@@ -1,275 +1,214 @@
 <template>
-  <el-card class="board-card">
-    <template #header>
-      <div class="board-head">
-        <h2 id="board-heading">问题单总表</h2>
-        <div class="board-entries">
-          <button type="button" :aria-pressed="mode === 'all'" @click="showAll">问题单总表</button>
-          <button type="button" :aria-pressed="mode === 'pool'" @click="showPool">待认领池</button>
-        </div>
+  <section class="board">
+    <div class="toolbar">
+      <div class="segments" role="toolbar" aria-label="状态筛选">
+        <button v-for="id in buckets" :key="id || 'all'" type="button" class="segment" :aria-pressed="filters.bucket === id" @click="chooseBucket(id)">
+          {{ labels[id] }} <span>{{ count(id) }}</span>
+        </button>
       </div>
-    </template>
-    <p v-if="mode === 'pool'" class="board-note">待认领池只看负责人为无主的问题单。历史无主单仍显示未认领。</p>
-    <search>
-      <form class="filters" aria-labelledby="board-heading" @submit.prevent="submit">
-        <div class="field">
-          <label for="board-q">搜索</label>
-          <input id="board-q" v-model="q" name="q" type="search" placeholder="AS-12、桩编码或标题"
-            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"
-            maxlength="80">
-        </div>
-        <div class="field">
-          <label for="board-state">状态</label>
-          <select id="board-state" v-model="state" name="state">
-            <option v-for="item in states" :key="item.value || 'all'" :value="item.value">{{ item.label }}</option>
+      <form class="filters" @submit.prevent="emitFilters(filters.bucket)">
+        <label class="control">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+          <span class="visually-hidden">搜索</span>
+          <input v-model="q" type="search" name="q" placeholder="搜索单号、桩编码或标题…" maxlength="80" autocomplete="off" enterkeyhint="search">
+        </label>
+        <label class="control">
+          <span class="visually-hidden">类型</span>
+          <select v-model="kind" name="kind" aria-label="类型" @change="emitFilters(filters.bucket)">
+            <option value="">全部类型</option>
+            <option value="fault">故障</option>
+            <option value="consult">咨询</option>
+            <option value="service">服务</option>
           </select>
-        </div>
-        <fieldset>
-          <legend>负责人</legend>
-          <label><input v-model="ownerMode" type="radio" name="owner-mode" value="all">全部</label>
-          <label><input v-model="ownerMode" type="radio" name="owner-mode" value="early">无主待认领</label>
-          <label><input v-model="ownerMode" type="radio" name="owner-mode" value="user">指定账号</label>
-          <div v-if="ownerMode === 'user'" class="field">
-            <label for="board-owner">账号</label>
-            <input id="board-owner" v-model.trim="ownerName" name="owner" list="board-owners" required maxlength="20"
-              autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
-            <datalist id="board-owners">
-              <option v-for="item in assignees" :key="item.username" :value="item.username"></option>
-            </datalist>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>类型</legend>
-          <label><input v-model="kind" type="radio" name="kind" value="">全部</label>
-          <label><input v-model="kind" type="radio" name="kind" value="fault">故障</label>
-          <label><input v-model="kind" type="radio" name="kind" value="consult">咨询</label>
-          <label><input v-model="kind" type="radio" name="kind" value="service">服务</label>
-        </fieldset>
-        <div class="field">
-          <label for="board-category">故障分类</label>
-          <select id="board-category" v-model="category" name="category">
-            <option value="">全部</option>
+        </label>
+        <label class="control">
+          <span class="visually-hidden">故障分类</span>
+          <select v-model="category" name="category" aria-label="故障分类" @change="emitFilters(filters.bucket)">
+            <option value="">全部分类</option>
             <option v-for="item in categories" :key="item" :value="item">{{ item }}</option>
           </select>
-        </div>
-        <button type="submit" :disabled="busy">查询</button>
+        </label>
+        <label class="control">
+          <span class="visually-hidden">负责人</span>
+          <select v-model="owner" name="owner" aria-label="负责人" @change="emitFilters(filters.bucket)">
+            <option value="">全部负责人</option>
+            <option v-for="item in assignees" :key="item.username" :value="item.username">{{ item.username }}</option>
+          </select>
+        </label>
+        <button class="icon-button" type="button" aria-label="重置筛选" @click="reset">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2 9M3 4v6h6" /></svg>
+        </button>
       </form>
-    </search>
-    <p class="board-note">共 {{ total }} 条<span v-if="total">，第 {{ page + 1 }} 页</span></p>
-    <p v-if="!items.length" class="board-note">没有符合条件的问题单</p>
-    <div v-else class="table-wrap" tabindex="0" role="region" aria-labelledby="board-heading">
-      <table>
+    </div>
+    <p v-if="narrowed" class="filter-note">当前筛选 {{ total }} 条。上方摘要和分段计数仍是全部问题单。</p>
+    <p v-if="!items.length" class="empty-row">没有符合条件的问题单</p>
+    <div v-else class="table-scroll">
+      <table class="tickets">
         <caption class="visually-hidden">问题单总表</caption>
+        <colgroup>
+          <col style="width:8%"><col style="width:26%"><col style="width:14%"><col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:8%">
+        </colgroup>
         <thead>
           <tr>
-            <th>单号</th>
-            <th>标题</th>
-            <th>桩编码</th>
-            <th>状态</th>
-            <th>负责人</th>
-            <th>下次回访</th>
-            <th>更新时间</th>
+            <th>单号</th><th>问题标题</th><th>桩编码</th><th>状态</th><th>负责人</th><th>下次回访</th><th>更新时间</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id" :class="{ selected: selectedId === item.id }">
-            <th scope="row" data-label="单号">
-              <button type="button" :aria-current="selectedId === item.id ? 'true' : undefined" @click="$emit('open', item.id)">
-                {{ orderNumber(item) }}
-              </button>
-            </th>
-            <td data-label="标题">{{ item.title }}</td>
-            <td data-label="桩编码">{{ item.device || '无' }}</td>
-            <td data-label="状态"><span class="status-chip" :data-state="item.state">{{ statusLabel(item.state) }}</span></td>
-            <td data-label="负责人">{{ ownerLabel(item.owner) }}</td>
-            <td data-label="下次回访">{{ item.nextDueAt ? dateLabel(item.nextDueAt) : '未安排' }}</td>
-            <td data-label="更新时间">{{ dateLabel(item.updatedAt) }}</td>
+          <tr v-for="item in items" :key="item.id" :class="{ pool: unowned(item) && item.state !== 'resolved' }">
+            <td><button type="button" class="order-link" @click="$emit('open', item.id)">{{ number(item) }}</button></td>
+            <td>
+              <div class="title-line">
+                <span v-if="kindLabel(item.kind)" class="type-tag" :class="item.kind">{{ kindLabel(item.kind) }}</span>
+                <button type="button" class="title-button clip" @click="$emit('open', item.id)">{{ item.title }}</button>
+              </div>
+              <div v-if="item.category" class="sub clip">{{ item.category }}</div>
+            </td>
+            <td><div class="device-code">{{ item.device || '无' }}</div></td>
+            <td><span class="status" :class="status(item).tone"><i></i>{{ status(item).label }}</span></td>
+            <td>
+              <div class="owner" :class="{ unowned: unowned(item) }">
+                <span class="avatar mini" :class="unowned(item) ? 'none' : tone(item.owner)">{{ unowned(item) ? '' : initial(item.owner) }}</span>
+                <span class="clip">{{ unowned(item) ? '未认领' : item.owner }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="callback" :class="due(item).tone"><i v-if="due(item).tone === 'overdue' || due(item).tone === 'today'"></i>{{ due(item).text }}</div>
+              <div v-if="hint(item)" class="sub clip">{{ hint(item) }}</div>
+            </td>
+            <td>
+              <div class="updated">{{ updated(item.updatedAt).text }}</div>
+              <div class="sub">{{ updated(item.updatedAt).year }}</div>
+            </td>
+            <td><button type="button" :class="action(item).claim ? 'claim-btn' : 'text-action'" :disabled="busy" @click="runAction(item)">{{ action(item).label }}</button></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div class="pager">
-      <button type="button" :disabled="busy || page === 0" @click="$emit('prev')">上一页</button>
-      <button type="button" :disabled="busy || !hasNext" @click="$emit('next')">下一页</button>
+    <div v-if="items.length" class="cards">
+      <article v-for="item in items" :key="'card-' + item.id" class="ticket-card" :class="{ pool: unowned(item) && item.state !== 'resolved' }">
+        <div class="ticket-top">
+          <button type="button" class="order-link" @click="$emit('open', item.id)">{{ number(item) }}</button>
+          <span class="status" :class="status(item).tone"><i></i>{{ status(item).label }}</span>
+        </div>
+        <div class="title-line">
+          <span v-if="kindLabel(item.kind)" class="type-tag" :class="item.kind">{{ kindLabel(item.kind) }}</span>
+          <button type="button" class="title-button" @click="$emit('open', item.id)">{{ item.title }}</button>
+        </div>
+        <div class="ticket-meta">
+          <div class="device-code">{{ item.device || '无' }}<span v-if="item.category"> · {{ item.category }}</span></div>
+          <div class="owner" :class="{ unowned: unowned(item) }"><span>{{ unowned(item) ? '未认领' : item.owner }}</span></div>
+          <div class="callback" :class="due(item).tone">{{ due(item).text }}</div>
+        </div>
+        <div class="card-action"><button type="button" :class="action(item).claim ? 'claim-btn' : 'text-action'" :disabled="busy" @click="runAction(item)">{{ action(item).label }}</button></div>
+      </article>
     </div>
-  </el-card>
+    <footer v-if="total || items.length" class="pagination">
+      <span>{{ pageLabel }}</span>
+      <div class="pages">
+        <button type="button" class="page" :disabled="busy || page === 0" aria-label="上一页" @click="$emit('page', page - 1)">‹</button>
+        <button v-for="index in pageButtons" :key="index" type="button" class="page" :aria-current="index === page ? 'page' : undefined" :disabled="busy" @click="$emit('page', index)">{{ index + 1 }}</button>
+        <button type="button" class="page" :disabled="busy || !hasNext" aria-label="下一页" @click="$emit('page', page + 1)">›</button>
+      </div>
+    </footer>
+  </section>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { BUCKET_LABELS, avatarTone, displayStatus, duePresentation, initial, isUnowned, kindLabel, orderNumber, rowAction, stateCount, updatedPresentation, visibleBuckets } from '../status'
 
-defineProps({
-  busy: Boolean,
+const props = defineProps({
   items: { type: Array, default: () => [] },
   total: { type: Number, default: 0 },
   page: { type: Number, default: 0 },
+  pageSize: { type: Number, default: 10 },
   hasNext: Boolean,
-  selectedId: { type: String, default: '' },
+  busy: Boolean,
+  filters: { type: Object, required: true },
+  summary: { type: Object, default: null },
   categories: { type: Array, default: () => [] },
   assignees: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['open', 'search', 'prev', 'next'])
-
-const states = [
-  { value: '', label: '全部' },
-  { value: 'open', label: '处理中' },
-  { value: 'triage', label: '待排查' },
-  { value: 'waiting', label: '待回访' },
-  { value: 'field', label: '现场服务' },
-  { value: 'verify', label: '待验证' },
-  { value: 'resolved', label: '已结案' },
-  { value: 'answered', label: '已答复' },
-  { value: 'referred', label: '已转出' }
-]
+const emit = defineEmits(['open', 'claim', 'search', 'page'])
+const labels = BUCKET_LABELS
 const q = ref('')
-const state = ref('')
-const ownerMode = ref('all')
-const ownerName = ref('')
 const kind = ref('')
 const category = ref('')
-const mode = ref('all')
+const owner = ref('')
 
-function orderNumber(item) {
-  return item.displayNumber ? 'AS-' + item.displayNumber : item.id
+watch(() => props.filters, value => {
+  q.value = value.q || ''
+  kind.value = value.kind || ''
+  category.value = value.category || ''
+  owner.value = value.owner || ''
+}, { immediate: true, deep: true })
+
+const buckets = computed(() => visibleBuckets(props.summary, props.filters.bucket || ''))
+const narrowed = computed(() => Boolean(q.value.trim() || kind.value || category.value || owner.value))
+const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+const pageButtons = computed(() => {
+  const last = pageCount.value - 1
+  const start = Math.max(0, Math.min(props.page - 2, last - 4))
+  const end = Math.min(last, start + 4)
+  const pages = []
+  for (let index = Math.max(0, end - 4); index <= end; index += 1) pages.push(index)
+  return pages
+})
+const pageLabel = computed(() => {
+  if (!props.total) return '共 0 条问题单'
+  const start = props.page * props.pageSize + 1
+  const end = props.page * props.pageSize + props.items.length
+  const prefix = narrowed.value ? '当前筛选 ' : '显示第 '
+  return narrowed.value ? prefix + props.total + ' 条' : prefix + start + '–' + end + ' 条，共 ' + props.total + ' 条问题单'
+})
+
+function count(id) { return stateCount(props.summary, id) }
+function number(item) { return orderNumber(item) }
+function status(item) { return displayStatus(item) }
+function action(item) { return rowAction(item) }
+function unowned(item) { return isUnowned(item) }
+function tone(name) { return avatarTone(name) }
+function due(item) { return duePresentation(item.nextDueAt) }
+function updated(value) { return updatedPresentation(value) }
+function hint(item) {
+  if (item.nextStep) return item.nextStep
+  const id = displayStatus(item).id
+  if (id === 'unclaimed') return '认领后安排回访'
+  if (id === 'fieldPending') return '待关联智享乐装现场单'
+  if (id === 'fieldActive') return '等待现场处理反馈'
+  if (id === 'verify') return '回访确认后可结案'
+  if (id === 'resolved') return '已结案'
+  return ''
 }
-
-function dateLabel(value) {
-  return String(value).replace('T', ' ').replace(/\.\d+/, '').replace(/Z|[+-]\d\d:\d\d$/, '').slice(0, 16)
+function emitFilters(bucket) {
+  emit('search', { q: q.value.trim(), kind: kind.value, category: category.value, owner: owner.value, bucket: bucket || '', state: '' })
 }
-
-function statusLabel(value) {
-  return {
-    open: '处理中', waiting: '待回访', field: '现场服务', verify: '待验证',
-    triage: '待排查', resolved: '已结案', answered: '已答复', referred: '已转出'
-  }[value] || value
-}
-
-function ownerLabel(owner) {
-  return !owner || owner === 'early' ? '无主' : owner
-}
-
-function payload() {
-  return {
-    q: q.value.trim(),
-    state: state.value,
-    owner: ownerMode.value === 'user' ? ownerName.value : ownerMode.value === 'early' ? 'early' : '',
-    kind: kind.value,
-    category: category.value
-  }
-}
-
-function submit() {
-  mode.value = ownerMode.value === 'early' && !q.value.trim() && !state.value && !kind.value && !category.value ? 'pool' : 'all'
-  emit('search', payload())
-}
-
-function showAll() {
+function chooseBucket(id) { emitFilters(id) }
+function reset() {
   q.value = ''
-  state.value = ''
-  ownerMode.value = 'all'
-  ownerName.value = ''
   kind.value = ''
   category.value = ''
-  mode.value = 'all'
-  emit('search', payload())
+  owner.value = ''
+  emitFilters('')
 }
-
-function showPool() {
-  q.value = ''
-  state.value = ''
-  ownerMode.value = 'early'
-  ownerName.value = ''
-  kind.value = ''
-  category.value = ''
-  mode.value = 'pool'
-  emit('search', payload())
+function runAction(item) {
+  const next = rowAction(item)
+  if (next.claim) emit('claim', item)
+  else emit('open', item.id, next.id === 'view' ? '' : next.id)
 }
 </script>
 
 <style scoped>
-.board-head, .board-entries, .pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.board-head { justify-content: space-between; }
-h2 { margin: 0; font-size: 16px; }
-.board-entries button, .pager button {
-  min-height: 44px;
-  padding: 0 12px;
-  color: var(--brand);
-  background: var(--card);
-  border: 1px solid var(--brand);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.board-entries button[aria-pressed="true"] { background: var(--selected); }
-.board-note { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
-.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 12px; align-items: start; }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.filters label, legend { font-size: 13px; font-weight: 600; }
-fieldset { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 4px; }
-fieldset label { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 500; }
-input[type="radio"] { accent-color: #006072; inline-size: 1.1rem; block-size: 1.1rem; }
-.filters button[type="submit"] {
-  justify-self: start;
-  align-self: end;
-  min-height: 44px;
-  padding: 0 12px;
-  color: var(--brand);
-  background: #fff;
-  border: 1px solid var(--brand);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.table-wrap {
-  overflow: auto;
-  max-inline-size: 100%;
-  max-block-size: min(420px, 70vh);
-  container: board / inline-size;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-table { border-collapse: separate; border-spacing: 0; width: 100%; }
-caption.visually-hidden {
+svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.visually-hidden {
   position: absolute;
-  clip-path: inset(50%);
-  overflow: hidden;
   width: 1px;
   height: 1px;
+  padding: 0;
   margin: -1px;
-  padding: 0;
-  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
-}
-thead th {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 1;
-  background: var(--card);
-  text-align: start;
-}
-th, td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: start; }
-tbody th { background: var(--card); }
-tr.selected td, tr.selected th { background: var(--selected); }
-th button {
-  min-height: 44px;
-  padding: 0;
-  color: var(--brand);
-  background: transparent;
   border: 0;
-  font-weight: 700;
-  cursor: pointer;
-  text-align: start;
-}
-.pager { margin-top: 8px; }
-.pager button:disabled, .filters button:disabled { cursor: not-allowed; opacity: 0.6; }
-@container board (inline-size < 640px) {
-  table, thead, tbody, tr, th, td { display: block; }
-  thead { display: none; }
-  tr { margin: 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  th, td { border-bottom: 1px solid var(--line); }
-  th::before, td::before {
-    content: attr(data-label) ": ";
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
 }
 </style>
