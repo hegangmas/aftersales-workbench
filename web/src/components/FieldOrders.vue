@@ -1,17 +1,17 @@
 <template>
-  <section v-if="problem.state === 'field' || problem.fieldOrders?.length" class="callback">
+  <section v-if="(editable && problem.state === 'field') || problem.fieldOrders?.length" class="callback">
     <h2>智享乐装现场单</h2>
     <ul class="work-list">
       <li v-for="item in problem.fieldOrders" :key="item.externalNo">
         {{ item.externalNo }} · {{ labels[item.state] }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
       </li>
     </ul>
-    <form v-if="problem.state === 'field' && !active" @submit.prevent="$emit('link', number.trim())">
+    <form v-if="editable && problem.state === 'field' && !active" @submit.prevent="$emit('link', number.trim())">
       <label for="field-number">已在智享乐装创建的工单号</label>
       <el-input id="field-number" :model-value="number" maxlength="64" @update:model-value="updateNumber" />
       <el-button native-type="submit" :disabled="busy || !number">关联现场单</el-button>
     </form>
-    <form v-if="problem.state === 'field' && active" @submit.prevent="submitResult">
+    <form v-if="editable && problem.state === 'field' && active" @submit.prevent="submitResult">
       <label for="field-state">现场单状态（人工登记）</label>
       <select id="field-state" :value="state" @change="$emit('update:state', $event.target.value)">
         <option value="in_progress" :disabled="active.state === 'in_progress'">处理中</option>
@@ -34,7 +34,8 @@ const props = defineProps({
   busy: Boolean,
   number: { type: String, default: '' },
   receipt: { type: String, default: '' },
-  state: { type: String, default: 'complete' }
+  state: { type: String, default: 'complete' },
+  editable: { type: Boolean, default: true }
 })
 const emit = defineEmits(['link', 'result', 'update:number', 'update:receipt', 'update:state'])
 const labels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }

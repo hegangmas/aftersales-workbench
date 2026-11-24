@@ -361,6 +361,135 @@ _, stale_status = login_client(seat, changed_password)
 assert stale_status == 401
 print("改密、重置和会话失效通过")
 
+def activate(opener, token):
+    global client, csrf
+    client, csrf = opener, token
+
+
+def session_for(username, password):
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    with opener.open(urllib.request.Request(BASE + "/api/session/csrf"), timeout=10) as response:
+        token = json.loads(response.read())["token"]
+    login_request = urllib.request.Request(
+        BASE + "/api/session/login",
+        data=urllib.parse.urlencode({"username": username, "password": password}).encode(),
+        headers={"X-CSRF-TOKEN": token})
+    with opener.open(login_request, timeout=10) as response:
+        assert response.status == 204
+    with opener.open(urllib.request.Request(BASE + "/api/session/csrf"), timeout=10) as response:
+        token = json.loads(response.read())["token"]
+    return opener, token
+
+
+def post_bytes(path, body, status):
+    data = json.dumps(body).encode()
+    headers = {"Content-Type": "application/json", "X-CSRF-TOKEN": csrf}
+    if path.startswith("/api/problems"):
+        headers["Idempotency-Key"] = "smoke-" + uuid.uuid4().hex
+    req = urllib.request.Request(BASE + path, data=data, headers=headers)
+    try:
+        response = client.open(req, timeout=10)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    with response:
+        payload = response.read()
+        assert response.status == status, (path, response.status, payload)
+        return payload
+
+
+def problem_snapshot(path):
+    detail = request(path)
+    return {
+        "version": detail["version"],
+        "state": detail["state"],
+        "owner": detail["owner"],
+        "activities": [(item.get("action"), item.get("actor"), item.get("note")) for item in detail["activities"]],
+        "pending": detail.get("pendingFollowup"),
+        "fields": detail.get("fieldOrders"),
+        "callbacks": [item.get("note") for item in detail.get("callbackResults") or []],
+    }
+
+
+seat_a = "a" + uuid.uuid4().hex[:8]
+seat_b = "b" + uuid.uuid4().hex[:8]
+password_a = secrets.token_hex(4) + "Aa1"
+password_b = secrets.token_hex(4) + "Aa1"
+assert post_bytes("/api/accounts", {"username": seat_a, "password": password_a, "role": "operator"}, 201) == b""
+post_bytes("/api/accounts", {"username": seat_b, "password": password_b, "role": "operator"}, 201)
+assert any(item["username"] == seat_a and item["role"] == "operator" for item in request("/api/accounts"))
+assert any(item["username"] == seat_a for item in request("/api/accounts/assignable"))
+_, seat_login = login_client(seat_a, password_a)
+assert seat_login == 204
+assert_safe(json.loads(post_bytes(
+    "/api/accounts", {"username": seat_a, "password": password_a, "role": "operator"}, 409)), "账号已存在")
+created_problem = request("/api/problems", 201, {
+    "device": device["device"], "title": "创建账号后仍返回问题单", "description": "201 JSON 仍然可读"
+})
+assert created_problem["id"]
+later = (datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None) + timedelta(hours=2)).isoformat(timespec="minutes")
+early_case = request("/api/problems", 201, {
+    "device": device["device"], "title": "无主先认领", "description": "early 仍表示无主"
+})
+early_path = "/api/problems/" + early_case["id"]
+assert request(early_path)["owner"] == "early"
+saved_client, saved_csrf = client, csrf
+a_client, a_csrf = session_for(seat_a, password_a)
+b_client, b_csrf = session_for(seat_b, password_b)
+activate(b_client, b_csrf)
+early_before = problem_snapshot(early_path)
+assert_safe(request(early_path + "/followups", 409, {
+    "note": "未认领先写", "expectedVersion": early_before["version"]
+}), "请先认领")
+assert problem_snapshot(early_path) == early_before
+request(early_path + "/claim", 204, {"expectedVersion": early_before["version"]})
+assert request(early_path)["owner"] == seat_b
+request(early_path + "/followups", 204, {"note": "认领后可以跟进"})
+activate(saved_client, saved_csrf)
+owned_case = request("/api/problems", 201, {
+    "device": device["device"], "title": "已认领权限", "description": "他人不能写入"
+})
+owned_path = "/api/problems/" + owned_case["id"]
+owned_version = request(owned_path)["version"]
+activate(a_client, a_csrf)
+request(owned_path + "/claim", 204, {"expectedVersion": owned_version})
+assert request(owned_path)["owner"] == seat_a
+activate(b_client, b_csrf)
+before = problem_snapshot(owned_path)
+denied_writes = [
+    (owned_path + "/followups", {"note": "越权跟进", "expectedVersion": before["version"]}),
+    (owned_path + "/callback", {
+        "owner": "坐席", "nextStep": "越权回访", "dueAt": later, "expectedVersion": before["version"]
+    }),
+    (owned_path + "/callback/result", dict(callback_result(
+        "resolved", "越权结案", evidenceSource="customer", evidence="不应写入"), expectedVersion=before["version"])),
+    (owned_path + "/handoff", {"target": seat_b, "reason": "越权转交", "expectedVersion": before["version"]}),
+    (owned_path + "/field-withdrawal", {"reason": "越权撤回", "expectedVersion": before["version"]}),
+    (owned_path + "/field-orders", {"externalNo": "SIM-DENY-" + seat_b, "expectedVersion": before["version"]}),
+    (owned_path + "/field-orders/result", {
+        "externalNo": "SIM-DENY-" + seat_b, "state": "complete", "receipt": "越权回执",
+        "expectedVersion": before["version"]
+    }),
+]
+for denied_path, denied_body in denied_writes:
+    assert_safe(request(denied_path, 403, denied_body), "只有当前负责人或管理员")
+assert problem_snapshot(owned_path) == before
+activate(a_client, a_csrf)
+request(owned_path + "/followups", 204, {"note": "负责人跟进"})
+request(owned_path + "/handoff", 204, {"target": seat_b, "reason": "交给坐席B继续"})
+assert request(owned_path)["owner"] == seat_b
+activate(b_client, b_csrf)
+request(owned_path + "/followups", 204, {"note": "接手后跟进"})
+activate(a_client, a_csrf)
+after_handoff = problem_snapshot(owned_path)
+assert_safe(request(owned_path + "/followups", 403, {
+    "note": "原负责人再写", "expectedVersion": after_handoff["version"]
+}), "只有当前负责人或管理员")
+assert problem_snapshot(owned_path) == after_handoff
+activate(saved_client, saved_csrf)
+request(owned_path + "/followups", 204, {"note": "管理员介入"})
+assert request(owned_path)["activities"][-1]["actor"] == os.environ["WORKBENCH_TEST_USER"]
+print("处理权限、无主认领和创建账号空响应通过")
+
 request("/api/session/logout", 204, {})
 request("/api/session", 401)
 print("登录、退出、即时回访和恢复证据通过")

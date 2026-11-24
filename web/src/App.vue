@@ -103,6 +103,7 @@
         </select>
         <el-button native-type="submit" :disabled="busy">创建账号</el-button>
       </form>
+      <p v-if="accountNotice" role="status" class="success-note">{{ accountNotice }}</p>
       <div class="scroll-region" tabindex="0" role="region" aria-label="账号列表">
         <ul class="work-list">
           <li v-for="item in accounts" :key="item.username">
@@ -139,6 +140,7 @@
           <div><dt>下一步</dt><dd>{{ nextAction }}</dd></div>
         </dl>
       </header>
+      <p v-if="handlingDenied" role="status" class="permission-note">{{ handlingDenied }}</p>
       <p v-if="unowned(problem) && problem.state !== 'resolved'"><button type="button" :disabled="busy" @click="claim">认领问题单</button></p>
       <form v-if="canHandoff" @submit.prevent="handoff">
         <label for="handoff-target">转交给</label>
@@ -176,21 +178,21 @@
           <div v-if="item.evidence">{{ evidenceLabels[item.evidenceSource] }} · {{ item.evidence }}</div>
         </article>
       </div>
-      <form v-if="problem.state !== 'resolved'" @submit.prevent="saveNote">
+      <form v-if="canProcess" @submit.prevent="saveNote">
         <label for="note">跟进记录</label>
         <el-input id="note" v-model.trim="note" type="textarea" maxlength="1500" />
         <el-button native-type="submit" type="primary" :disabled="busy || !note">保存跟进</el-button>
       </form>
       <FieldOrders :key="problem.id"
         v-model:number="fieldNumber" v-model:receipt="fieldReceipt" v-model:state="fieldState"
-        :problem="problem" :busy="busy" @link="saveFieldLink" @result="saveFieldResult" />
-      <p v-if="problem.state === 'field'" class="stage-note">待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。</p>
-      <form v-if="problem.state === 'field' && !fieldInProgress" @submit.prevent="withdrawDispatch">
+        :problem="problem" :busy="busy" :editable="canProcess" @link="saveFieldLink" @result="saveFieldResult" />
+      <p v-if="canProcess && problem.state === 'field'" class="stage-note">待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。</p>
+      <form v-if="canProcess && problem.state === 'field' && !fieldInProgress" @submit.prevent="withdrawDispatch">
         <label for="withdraw-reason">撤回原因</label>
         <el-input id="withdraw-reason" v-model.trim="withdrawReason" type="textarea" maxlength="500" />
         <el-button native-type="submit" :disabled="busy || !withdrawReason">撤回待派单，返回排查</el-button>
       </form>
-      <section v-if="problem.state !== 'resolved' && problem.state !== 'field' && !fieldInProgress" class="callback">
+      <section v-if="canProcess && problem.state !== 'field' && !fieldInProgress" class="callback">
         <h2>回访安排</h2>
         <p v-if="problem.state === 'verify' || problem.resumeState === 'verify'" class="stage-note">待验证问题可以安排回访。选择继续跟进后，问题仍回到待验证。</p>
         <p v-if="problem.pendingFollowup">
@@ -284,6 +286,7 @@ const handoffReason = ref('')
 const newUsername = ref('')
 const newPassword = ref('')
 const newRole = ref('operator')
+const accountNotice = ref('')
 const fieldNumber = ref('')
 const fieldReceipt = ref('')
 const fieldState = ref('complete')
@@ -397,6 +400,23 @@ function unowned(item) {
   return !item?.owner || item.owner === 'early'
 }
 
+function canHandle(current) {
+  if (!current || current.state === 'resolved') return false
+  if (account.value?.role === 'admin') return true
+  if (unowned(current)) return false
+  return account.value?.username === current.owner
+}
+
+const canProcess = computed(() => canHandle(problem.value))
+const handlingDenied = computed(() => {
+  const current = problem.value
+  if (!current || current.state === 'resolved' || canHandle(current)) return ''
+  if (unowned(current)) {
+    return '这张问题单还没有负责人。请先认领，认领成功后才能保存跟进、安排回访、撤回待派单或登记现场单。'
+  }
+  return '这张问题单由 ' + ownerLabel(current.owner) + ' 负责。当前账号无权处理，跟进、回访、转交、撤回和现场单都不会被保存。需要接手时，请由负责人转交，或由管理员处理。'
+})
+
 const canHandoff = computed(() => problem.value && problem.value.state !== 'resolved' && !unowned(problem.value)
   && (account.value?.role === 'admin' || account.value?.username === problem.value.owner))
 
@@ -474,6 +494,13 @@ function fillFromServer(current) {
 }
 
 function restoreDraft(draft, current) {
+  if (current.state !== 'resolved' && !canHandle(current)) {
+    const kept = textOf(draft)
+    refreshNote.value = (unowned(current)
+      ? '刷新后问题单仍无主，请先认领再处理。'
+      : '刷新后当前账号不能处理这张问题单。') + (kept ? '未提交内容暂不能提交：' + kept : '')
+    return
+  }
   const active = current.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state))
   const notes = []
   if (current.state === 'resolved') {
@@ -643,12 +670,15 @@ async function loadAccounts() {
 }
 
 function addAccount() {
+  accountNotice.value = ''
   return run(async () => {
     await createAccount({ username: newUsername.value, password: newPassword.value, role: newRole.value })
     newUsername.value = ''
     newPassword.value = ''
+    newRole.value = 'operator'
     await loadAccounts()
     assignees.value = await assignableAccounts()
+    accountNotice.value = '账号已创建，账号列表和转交候选已更新'
   })
 }
 
@@ -815,6 +845,8 @@ button:not(.el-button) {
 .page-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
 .page-heading h1 { margin: 0; }
 .page-heading p, .stage-note, time, .row-meta { color: var(--muted); font-size: 13px; }
+.permission-note { margin: 0 0 12px; padding: 8px 10px; color: var(--warn); background: #f8f1dc; border: 1px solid var(--line); border-radius: 6px; }
+.success-note { margin: 8px 0 0; color: var(--ok); }
 .page-heading p { margin: 0; }
 .workspace-grid { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 12px; align-items: start; }
 .sidebar { min-width: 0; }

@@ -30,6 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProblemService {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
     private static final String VERSION_CONFLICT = "工单已被他人更新，请刷新后重试";
+    static final String CLAIM_FIRST = "无主问题请先认领";
+    static final String HANDLER_REQUIRED = "只有当前负责人或管理员可以处理这张问题单";
     private static final Set<String> STATES = new HashSet<String>(Arrays.asList(
         "open", "triage", "waiting", "field", "verify", "resolved", "answered", "referred"));
     private static final Set<String> KINDS = new HashSet<String>(Arrays.asList("fault", "consult", "service"));
@@ -68,6 +70,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         mapper.insertActivity(id, actor(), "followup", note.trim());
         bump(id, row.version, row.state);
     }
@@ -179,6 +182,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         requireFieldStageClear(id, row.state);
         if (due == null || !due.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择未来的回访时间");
@@ -198,6 +202,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         requireFieldStageClear(id, row.state);
         if (contactedAt == null || contactedAt.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写实际联系时间");
@@ -257,11 +262,9 @@ public class ProblemService {
         }
         Row row = lockRow(id, expectedVersion);
         if (row.unowned()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "无主问题请先认领");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, CLAIM_FIRST);
         }
-        if (!admin() && !actor().equals(row.owner)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有负责人或管理员可以转交");
-        }
+        requireProcessingActor(row);
         if (target == null || target.equals(row.owner)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择另一名启用账号");
         }
@@ -290,6 +293,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         if (!"field".equals(row.state)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "只有待现场派单可以撤回");
         }
@@ -307,6 +311,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         if (!"field".equals(row.state) || mapper.activeFieldOrders(id) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "仅待现场派单的问题可关联一张现场单");
         }
@@ -326,6 +331,7 @@ public class ProblemService {
             return;
         }
         Row row = lockRow(id, expectedVersion);
+        requireProcessingActor(row);
         if (!"field".equals(row.state)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "当前问题未处于现场服务阶段");
         }
@@ -401,6 +407,18 @@ public class ProblemService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
         }
         return new Row(state, version, owner);
+    }
+
+    private void requireProcessingActor(Row row) {
+        if (row.unowned()) {
+            if (!admin()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, CLAIM_FIRST);
+            }
+            return;
+        }
+        if (!admin() && !actor().equals(row.owner)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, HANDLER_REQUIRED);
+        }
     }
 
     private void bump(String id, int version, String state) {

@@ -51,7 +51,14 @@ async function request(path, body, key) {
     error.status = response.status
     throw error
   }
-  return response.status === 204 ? undefined : response.json()
+  if (response.status === 204) return undefined
+  const text = await response.text()
+  if (!text || !text.trim()) return undefined
+  try {
+    return JSON.parse(text)
+  } catch (ignore) {
+    throw new Error('响应格式不正确')
+  }
 }
 
 export const lookupDevice = query => request('/devices/lookup?query=' + encodeURIComponent(query))
