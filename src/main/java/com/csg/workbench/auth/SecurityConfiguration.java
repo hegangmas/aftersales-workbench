@@ -31,10 +31,26 @@ public class SecurityConfiguration {
             if (account == null) {
                 throw new UsernameNotFoundException("unknown account");
             }
-            boolean admin = "admin".equals(String.valueOf(account.get("role")));
+            String role = String.valueOf(account.get("role"));
+            String[] roles;
+            if ("admin".equals(role)) {
+                roles = new String[] {"ADMIN", "DISPATCHER", "OPERATOR", "QUALITY"};
+            } else if ("dispatcher".equals(role)) {
+                roles = new String[] {"DISPATCHER", "OPERATOR"};
+            } else if ("engineer".equals(role)) {
+                roles = new String[] {"ENGINEER", "OPERATOR"};
+            } else if ("quality".equals(role)) {
+                roles = new String[] {"QUALITY", "OPERATOR"};
+            } else if ("provider".equals(role)) {
+                roles = new String[] {"PROVIDER"};
+            } else if ("oem".equals(role)) {
+                roles = new String[] {"OEM"};
+            } else {
+                roles = new String[] {"OPERATOR"};
+            }
             return User.withUsername(String.valueOf(account.get("username")))
                 .password(String.valueOf(account.get("passwordHash")))
-                .roles(admin ? new String[] {"ADMIN", "OPERATOR"} : new String[] {"OPERATOR"})
+                .roles(roles)
                 .disabled(!AccountService.flag(account.get("enabled")))
                 .build();
         };

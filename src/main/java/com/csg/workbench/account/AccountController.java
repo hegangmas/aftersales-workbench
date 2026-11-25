@@ -46,6 +46,24 @@ public class AccountController {
         return accounts.assignable();
     }
 
+    @PostMapping("/duty")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateOwnDuty(Authentication authentication, @Valid @RequestBody DutyChange req) {
+        accounts.setDutyStatus(authentication.getName(), req.status);
+    }
+
+    @PostMapping("/{username}/duty")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateUserDuty(Authentication authentication, @PathVariable String username,
+                               @Valid @RequestBody DutyChange req) {
+        boolean allowed = authentication.getName().equals(username) || authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()) || "ROLE_DISPATCHER".equals(a.getAuthority()));
+        if (!allowed) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有本人、调度或管理员可调整在岗状态");
+        }
+        accounts.setDutyStatus(username, req.status);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void create(Authentication authentication, @Valid @RequestBody CreateAccount request) {
@@ -105,6 +123,10 @@ public class AccountController {
 
     public static class StatusChange {
         @NotNull(message = "请指定是否启用") public Boolean enabled;
+    }
+
+    public static class DutyChange {
+        @NotBlank(message = "请选择在岗状态") public String status;
     }
 
     public static class PasswordChange {

@@ -26,9 +26,11 @@ public class SessionController {
 
     @GetMapping
     public Map<String, String> current(Principal principal) {
+        Map<String, Object> acc = accounts.find(principal.getName());
         Map<String, String> body = new LinkedHashMap<String, String>();
         body.put("username", principal.getName());
-        body.put("role", accounts.role(principal.getName()));
+        body.put("role", acc == null ? "" : String.valueOf(acc.get("role")));
+        body.put("dutyStatus", acc != null && acc.get("dutyStatus") != null ? String.valueOf(acc.get("dutyStatus")) : "ready");
         return body;
     }
 }

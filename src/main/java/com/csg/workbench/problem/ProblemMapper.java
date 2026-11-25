@@ -25,13 +25,19 @@ public interface ProblemMapper {
         + "VALUES (#{id}, #{actor}, #{action}, #{note})")
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
-    @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState, "
+    @Select("SELECT id, display_number AS displayNumber, ticket_no AS ticketNo, title, device, state, description, resume_state AS resumeState, "
         + "category, kind, channel, owner, version, fault_occurred_at AS faultOccurredAt, "
         + "suspend_reason AS suspendReason, grade, disposal_type AS disposalType, "
         + "compromise_flag AS compromiseFlag, escalation_level AS escalationLevel, "
         + "escalation_reason AS escalationReason, sla_due_at AS slaDueAt, "
-        + "auto_approval_note AS autoApprovalNote FROM problem WHERE id = #{id}")
+        + "auto_approval_note AS autoApprovalNote, customer_id AS customerId, device_pending AS devicePending, "
+        + "urgency, symptom_tags AS symptomTags, accepted_by AS acceptedBy, warranty_confirmed AS warrantyConfirmed, "
+        + "snapshot_json AS snapshotJson, old_part_registered AS oldPartRegistered, old_part_no AS oldPartNo, "
+        + "reopened_from_id AS reopenedFromId, created_at AS createdAt, updated_at AS updatedAt FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
+
+    @Select("SELECT id FROM problem WHERE ticket_no = #{ticketNo}")
+    String findIdByTicketNo(@Param("ticketNo") String ticketNo);
 
     @Select("SELECT id FROM problem WHERE display_number = #{number}")
     String findIdByNumber(@Param("number") long number);
@@ -214,4 +220,120 @@ public interface ProblemMapper {
 
     @Select("SELECT COUNT(*) FROM evidence_item WHERE problem_id = #{id}")
     int countEvidences(@Param("id") String id);
+
+    @Insert("INSERT IGNORE INTO ticket_sequence (biz_date, seq) VALUES (#{bizDate}, 0)")
+    void initSequenceDate(@Param("bizDate") String bizDate);
+
+    @Update("UPDATE ticket_sequence SET seq = seq + 1 WHERE biz_date = #{bizDate}")
+    int incrementSequence(@Param("bizDate") String bizDate);
+
+    @Select("SELECT seq FROM ticket_sequence WHERE biz_date = #{bizDate}")
+    int currentSequence(@Param("bizDate") String bizDate);
+
+    @Insert("INSERT INTO problem (id, ticket_no, scenario, title, category, channel, description, kind, state, owner, "
+        + "device, customer_id, device_pending, urgency, accepted_by, fault_occurred_at, sla_due_at, snapshot_json, reopened_from_id) "
+        + "VALUES (#{id}, #{ticketNo}, 'V11-STRICT', #{title}, #{category}, #{channel}, #{description}, 'fault', "
+        + "#{state}, #{owner}, #{device,jdbcType=VARCHAR}, #{customerId,jdbcType=VARCHAR}, #{devicePending}, "
+        + "#{urgency}, #{acceptedBy}, #{faultOccurredAt,jdbcType=TIMESTAMP}, #{slaDueAt,jdbcType=TIMESTAMP}, "
+        + "#{snapshotJson,jdbcType=VARCHAR}, #{reopenedFromId,jdbcType=VARCHAR})")
+    void insertProblemV11(@Param("id") String id, @Param("ticketNo") String ticketNo, @Param("title") String title,
+                          @Param("category") String category, @Param("channel") String channel,
+                          @Param("description") String description, @Param("state") String state,
+                          @Param("owner") String owner, @Param("device") String device,
+                          @Param("customerId") String customerId, @Param("devicePending") int devicePending,
+                          @Param("urgency") String urgency, @Param("acceptedBy") String acceptedBy,
+                          @Param("faultOccurredAt") LocalDateTime faultOccurredAt,
+                          @Param("slaDueAt") LocalDateTime slaDueAt, @Param("snapshotJson") String snapshotJson,
+                          @Param("reopenedFromId") String reopenedFromId);
+
+    @Update("UPDATE problem SET device = #{device}, customer_id = #{customerId,jdbcType=VARCHAR}, device_pending = 0, "
+        + "snapshot_json = #{snapshotJson,jdbcType=VARCHAR}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int bindDevice(@Param("id") String id, @Param("device") String device, @Param("customerId") String customerId,
+                   @Param("snapshotJson") String snapshotJson, @Param("version") int version);
+
+    @Update("UPDATE problem SET state = #{state}, owner = #{owner}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int assignOwnerAndState(@Param("id") String id, @Param("owner") String owner, @Param("state") String state,
+                            @Param("version") int version);
+
+    @Update("UPDATE problem SET state = #{state}, old_part_registered = #{oldPartRegistered}, "
+        + "old_part_no = #{oldPartNo,jdbcType=VARCHAR}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int closeWithOldPart(@Param("id") String id, @Param("state") String state, @Param("oldPartRegistered") int oldPartRegistered,
+                         @Param("oldPartNo") String oldPartNo, @Param("version") int version);
+
+    @Update("UPDATE problem SET old_part_registered = 1, old_part_no = #{oldPartNo} WHERE id = #{id}")
+    int markOldPartRegistered(@Param("id") String id, @Param("oldPartNo") String oldPartNo);
+
+    @Insert("INSERT INTO state_transition_log (problem_id, from_state, to_state, actor, action, reason) "
+        + "VALUES (#{id}, #{fromState}, #{toState}, #{actor}, #{action}, #{reason})")
+    void insertTransition(@Param("id") String id, @Param("fromState") String fromState, @Param("toState") String toState,
+                          @Param("actor") String actor, @Param("action") String action, @Param("reason") String reason);
+
+    @Select("SELECT from_state AS fromState, to_state AS toState, actor, action, reason, created_at AS createdAt "
+        + "FROM state_transition_log WHERE problem_id = #{id} ORDER BY id")
+    List<Map<String, Object>> listTransitions(@Param("id") String id);
+
+    @Insert("INSERT INTO assessment_record (problem_id, grade, disposal_type, rule_version, auto_approved, approval_note, note, actor) "
+        + "VALUES (#{id}, #{grade}, #{disposalType}, 'V2.3', #{autoApproved}, #{approvalNote,jdbcType=VARCHAR}, #{note}, #{actor})")
+    void insertAssessment(@Param("id") String id, @Param("grade") String grade, @Param("disposalType") String disposalType,
+                          @Param("autoApproved") int autoApproved, @Param("approvalNote") String approvalNote,
+                          @Param("note") String note, @Param("actor") String actor);
+
+    @Select("SELECT id, grade, disposal_type AS disposalType, rule_version AS ruleVersion, auto_approved AS autoApproved, "
+        + "approval_note AS approvalNote, note, actor, created_at AS createdAt "
+        + "FROM assessment_record WHERE problem_id = #{id} ORDER BY id DESC")
+    List<Map<String, Object>> listAssessments(@Param("id") String id);
+
+    @Insert("INSERT INTO field_order (problem_id, external_no, state, receipt, is_claim, return_to_factory, project_code, appointment_at, photo_names) "
+        + "VALUES (#{id}, #{externalNo}, 'dispatched', '', #{isClaim}, #{returnToFactory}, #{projectCode}, #{appointmentAt,jdbcType=TIMESTAMP}, #{photoNames})")
+    void insertDispatchOrder(@Param("id") String id, @Param("externalNo") String externalNo,
+                             @Param("isClaim") int isClaim, @Param("returnToFactory") int returnToFactory,
+                             @Param("projectCode") String projectCode, @Param("appointmentAt") LocalDateTime appointmentAt,
+                             @Param("photoNames") String photoNames);
+
+    @Select("SELECT id, external_no AS externalNo, state, receipt, is_claim AS isClaim, return_to_factory AS returnToFactory, "
+        + "project_code AS projectCode, appointment_at AS appointmentAt, photo_names AS photoNames, "
+        + "accepted_at AS acceptedAt, arrived_at AS arrivedAt, completed_at AS completedAt, "
+        + "replaced_parts AS replacedParts, old_part_no AS oldPartNo, old_part_photo AS oldPartPhoto, "
+        + "customer_accept_result AS customerAcceptResult, fee_owner AS feeOwner, rollback_anomaly_note AS rollbackAnomalyNote "
+        + "FROM field_order WHERE problem_id = #{id} ORDER BY id DESC")
+    List<Map<String, Object>> fieldOrdersDetailed(@Param("id") String id);
+
+    @Select("SELECT id, state FROM field_order WHERE problem_id = #{id} AND external_no = #{externalNo} LIMIT 1")
+    Map<String, Object> findFieldOrder(@Param("id") String id, @Param("externalNo") String externalNo);
+
+    @Update("UPDATE field_order SET state = #{state}, receipt = #{receipt}, "
+        + "accepted_at = COALESCE(accepted_at, #{acceptedAt,jdbcType=TIMESTAMP}), "
+        + "arrived_at = COALESCE(arrived_at, #{arrivedAt,jdbcType=TIMESTAMP}), "
+        + "completed_at = COALESCE(completed_at, #{completedAt,jdbcType=TIMESTAMP}), "
+        + "replaced_parts = COALESCE(#{replacedParts,jdbcType=VARCHAR}, replaced_parts), "
+        + "old_part_no = COALESCE(#{oldPartNo,jdbcType=VARCHAR}, old_part_no), "
+        + "old_part_photo = COALESCE(#{oldPartPhoto,jdbcType=VARCHAR}, old_part_photo), "
+        + "customer_accept_result = COALESCE(#{customerAcceptResult,jdbcType=VARCHAR}, customer_accept_result), "
+        + "fee_owner = COALESCE(#{feeOwner,jdbcType=VARCHAR}, fee_owner) "
+        + "WHERE problem_id = #{id} AND external_no = #{externalNo}")
+    int updateFieldOrderCallback(@Param("id") String id, @Param("externalNo") String externalNo,
+                                 @Param("state") String state, @Param("receipt") String receipt,
+                                 @Param("acceptedAt") LocalDateTime acceptedAt, @Param("arrivedAt") LocalDateTime arrivedAt,
+                                 @Param("completedAt") LocalDateTime completedAt, @Param("replacedParts") String replacedParts,
+                                 @Param("oldPartNo") String oldPartNo, @Param("oldPartPhoto") String oldPartPhoto,
+                                 @Param("customerAcceptResult") String customerAcceptResult, @Param("feeOwner") String feeOwner);
+
+    @Update("UPDATE field_order SET rollback_anomaly_note = #{note} WHERE problem_id = #{id} AND external_no = #{externalNo}")
+    int recordFieldRollbackAnomaly(@Param("id") String id, @Param("externalNo") String externalNo, @Param("note") String note);
+
+    @Select("SELECT id, version FROM problem WHERE state = 'pending_assign' ORDER BY created_at ASC LIMIT 50")
+    List<Map<String, Object>> listPendingAssign();
+
+    @Select("SELECT COUNT(*) AS total, "
+        + "COALESCE(SUM(state = 'closed' OR state = 'resolved'), 0) AS closedCount, "
+        + "COALESCE(SUM(disposal_type = 'replace'), 0) AS replaceCount, "
+        + "COALESCE(SUM(compromise_flag = 1), 0) AS compromiseCount, "
+        + "COALESCE(SUM(escalation_level <> 'none'), 0) AS escalatedCount, "
+        + "COALESCE(SUM(device_pending = 1 AND state NOT IN ('closed','cancelled','resolved')), 0) AS devicePendingCount, "
+        + "COALESCE(SUM(sla_due_at IS NOT NULL AND sla_due_at < #{now} AND state NOT IN ('closed','cancelled','resolved')), 0) AS slaOverdueCount "
+        + "FROM problem")
+    Map<String, Object> monthlySummary(@Param("now") LocalDateTime now);
+
+    @Select("SELECT channel, COUNT(*) AS count FROM problem GROUP BY channel ORDER BY count DESC")
+    List<Map<String, Object>> channelBreakdown();
 }

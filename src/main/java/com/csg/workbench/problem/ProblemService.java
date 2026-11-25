@@ -34,10 +34,12 @@ public class ProblemService {
     static final String CLAIM_FIRST = "无主问题请先认领";
     static final String HANDLER_REQUIRED = "只有当前负责人或管理员可以处理这张问题单";
     private static final Set<String> STATES = new HashSet<String>(Arrays.asList(
-        "open", "triage", "waiting", "field", "verify", "resolved", "answered", "referred"));
+        "open", "triage", "waiting", "field", "verify", "resolved", "answered", "referred",
+        "pending_assign", "processing", "suspended", "pending_callback", "pending_accept", "closed", "cancelled"));
     private static final Set<String> BUCKETS = new HashSet<String>(Arrays.asList(
         "unclaimed", "open", "triage", "waiting", "fieldPending", "fieldActive",
-        "verify", "resolved", "answered", "referred"));
+        "verify", "resolved", "answered", "referred",
+        "pending_assign", "processing", "suspended", "pending_callback", "pending_accept", "closed", "cancelled", "device_pending"));
     private static final Set<String> KINDS = new HashSet<String>(Arrays.asList("fault", "consult", "service"));
     private static final Set<String> CHANNELS = new HashSet<String>(Arrays.asList("phone", "400", "miniprogram", "provider", "wecom"));
     private static final Set<String> SUSPEND_REASONS = new HashSet<String>(Arrays.asList(
@@ -118,11 +120,13 @@ public class ProblemService {
         id = resolveReference(id);
         Map<String, Object> problem = requireProblem(id);
         problem.put("pendingFollowup", mapper.pending(id, LocalDateTime.now(BUSINESS_ZONE)));
-        problem.put("fieldOrders", mapper.fieldOrders(id));
+        problem.put("fieldOrders", mapper.fieldOrdersDetailed(id));
         problem.put("callbackResults", mapper.callbackResults(id));
         problem.put("activities", mapper.listActivities(id));
         problem.put("ownershipEvents", mapper.ownershipEvents(id));
         problem.put("evidences", mapper.listEvidences(id));
+        problem.put("transitions", mapper.listTransitions(id));
+        problem.put("assessments", mapper.listAssessments(id));
         problem.put("sop", SopCatalog.forCategory(problem.get("category") == null ? null : String.valueOf(problem.get("category"))));
         return problem;
     }
@@ -831,6 +835,13 @@ public class ProblemService {
 
     private String resolveReference(String reference) {
         String value = reference.toUpperCase(Locale.ROOT);
+        if (value.matches("GD[0-9]{8,16}")) {
+            String byTicket = mapper.findIdByTicketNo(value);
+            if (byTicket == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "问题单不存在");
+            }
+            return byTicket;
+        }
         if (!value.matches("(AS-)?[0-9]{1,18}")) {
             return reference;
         }

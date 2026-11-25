@@ -24,10 +24,38 @@ public class AccountService {
         this.passwords = passwords;
     }
 
+    private static final java.util.Set<String> ROLES = new java.util.HashSet<String>(java.util.Arrays.asList(
+        "admin", "dispatcher", "operator", "engineer", "quality", "provider", "oem"));
+    private static final java.util.Set<String> DUTY_STATUSES = new java.util.HashSet<String>(java.util.Arrays.asList(
+        "ready", "break", "away"));
+
     @Transactional
     public void bootstrapIfEmpty(String username, String passwordHash) {
         if (mapper.count() == 0) {
             mapper.insert(username, passwordHash, "admin", 1);
+            insertIfAbsent("dispatcher", passwordHash, "dispatcher", username);
+            insertIfAbsent("agent", passwordHash, "operator", username);
+            insertIfAbsent("engineer", passwordHash, "engineer", username);
+        }
+    }
+
+    private void insertIfAbsent(String demoUser, String passwordHash, String role, String adminUser) {
+        if (!demoUser.equals(adminUser) && mapper.find(demoUser) == null) {
+            mapper.insert(demoUser, passwordHash, role, 1);
+        }
+    }
+
+    public List<Map<String, Object>> readyAgents() {
+        return mapper.readyAgents();
+    }
+
+    @Transactional
+    public void setDutyStatus(String username, String status) {
+        if (!DUTY_STATUSES.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "在岗状态无效");
+        }
+        if (mapper.updateDutyStatus(username, status) != 1) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在");
         }
     }
 
@@ -63,8 +91,8 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "账号只能包含字母数字和 ._- ，且不超过20字");
         }
         requireStrongPassword(password, username);
-        if (!"admin".equals(role) && !"operator".equals(role)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "角色只能是管理员或坐席");
+        if (!ROLES.contains(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "角色无效");
         }
         try {
             mapper.insert(username, passwords.encode(password), role, 1);

@@ -29,11 +29,13 @@ class SchemaUpgradeTest {
         String schema = "soongo_aftersales_empty_init_test";
         recreate(schema);
         migrateClasspath(schema);
-        assertEquals("8", latestVersion(schema));
+        assertEquals("9", latestVersion(schema));
         assertTrue(tableExists(schema, "problem"));
         assertTrue(tableExists(schema, "account"));
         assertTrue(tableExists(schema, "security_audit"));
         assertTrue(tableExists(schema, "evidence_item"));
+        assertTrue(tableExists(schema, "sop_entry"));
+        assertTrue(tableExists(schema, "device_profile"));
         assertFalse(auditStoresSecrets(schema));
     }
 
@@ -83,8 +85,9 @@ class SchemaUpgradeTest {
             String changed = scalar(statement, "SELECT credentials_changed_at FROM account WHERE username = 'keptadmin'");
             assertTrue(changed != null && !changed.isEmpty());
         }
-        assertEquals("8", latestVersion(schema));
+        assertEquals("9", latestVersion(schema));
         assertTrue(tableExists(schema, "evidence_item"));
+        assertTrue(tableExists(schema, "sop_entry"));
         assertFalse(auditStoresSecrets(schema));
     }
 

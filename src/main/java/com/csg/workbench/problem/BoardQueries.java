@@ -14,9 +14,9 @@ public class BoardQueries {
     private static String sql(Map<String, Object> params, boolean page) {
         StringBuilder sql = new StringBuilder();
         if (page) {
-            sql.append("SELECT p.id, p.display_number AS displayNumber, p.title, p.device, p.state, p.owner, ");
-            sql.append("p.category, p.kind, p.channel, p.suspend_reason AS suspendReason, p.grade, ");
-            sql.append("p.disposal_type AS disposalType, p.compromise_flag AS compromiseFlag, ");
+            sql.append("SELECT p.id, p.display_number AS displayNumber, p.ticket_no AS ticketNo, p.title, p.device, p.state, p.owner, ");
+            sql.append("p.category, p.kind, p.channel, p.device_pending AS devicePending, p.urgency, p.suspend_reason AS suspendReason, p.grade, ");
+            sql.append("p.disposal_type AS disposalType, p.compromise_flag AS compromiseFlag, p.old_part_registered AS oldPartRegistered, ");
             sql.append("p.escalation_level AS escalationLevel, p.sla_due_at AS slaDueAt, ");
             sql.append("p.version AS version, p.updated_at AS updatedAt, ");
             sql.append("(SELECT COUNT(*) FROM field_order fo WHERE fo.problem_id = p.id ");
@@ -91,6 +91,12 @@ public class BoardQueries {
             sql.append(" AND p.state = 'field' AND p.owner <> 'early' AND p.owner <> ''");
             sql.append(" AND EXISTS (SELECT 1 FROM field_order fo WHERE fo.problem_id = p.id ");
             sql.append("AND fo.state IN ('linked', 'in_progress'))");
+        } else if ("device_pending".equals(bucket)) {
+            sql.append(" AND p.device_pending = 1 AND p.state NOT IN ('closed', 'cancelled', 'resolved')");
+        } else if ("pending_assign".equals(bucket) || "processing".equals(bucket) || "suspended".equals(bucket)
+            || "pending_callback".equals(bucket) || "pending_accept".equals(bucket)
+            || "closed".equals(bucket) || "cancelled".equals(bucket)) {
+            sql.append(" AND p.state = #{bucket}");
         }
     }
 

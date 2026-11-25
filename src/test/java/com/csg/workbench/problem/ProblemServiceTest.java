@@ -418,7 +418,7 @@ class ProblemServiceTest {
         found.put("state", "open");
         when(mapper.findIdByNumber(12L)).thenReturn(ID);
         when(mapper.findProblem(ID)).thenReturn(found);
-        when(mapper.fieldOrders(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
+        when(mapper.fieldOrdersDetailed(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         when(mapper.callbackResults(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         when(mapper.listActivities(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
         when(mapper.ownershipEvents(ID)).thenReturn(Collections.<Map<String, Object>>emptyList());
