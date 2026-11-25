@@ -86,7 +86,7 @@ public class AccountController {
         request.getSession().setAttribute(WorkbenchSession.CREDENTIALS_CHANGED_AT, changedAt);
         UserDetails details = users.loadUserByUsername(username);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
-            details, details.getPassword(), details.getAuthorities()));
+            details, null, details.getAuthorities()));
     }
 
     private static void requireAdmin(Authentication authentication) {

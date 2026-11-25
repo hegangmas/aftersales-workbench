@@ -72,6 +72,19 @@ class AccountServiceTest {
         verify(mapper, never()).insertAudit(anyString(), anyString(), anyString());
     }
 
+    @Test
+    void disableLastAdminLocksAndRejects() {
+        Map<String, Object> admin = account(encoder.encode("Rightpass1"));
+        admin.put("role", "admin");
+        when(mapper.find("admin1")).thenReturn(admin);
+        when(mapper.enabledAdminsForUpdate()).thenReturn(1);
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+            () -> service.setEnabled("admin1", false, "admin2"));
+        assertEquals(HttpStatus.CONFLICT, error.getStatus());
+        assertEquals("至少保留一名启用的管理员", error.getReason());
+        verify(mapper, never()).setEnabled("admin1", 0);
+    }
+
     private static Map<String, Object> account(String hash) {
         Map<String, Object> row = new LinkedHashMap<String, Object>();
         row.put("passwordHash", hash);

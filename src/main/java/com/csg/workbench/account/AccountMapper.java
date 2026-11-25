@@ -33,6 +33,12 @@ public interface AccountMapper {
     @Select("SELECT COUNT(*) FROM account WHERE role = 'admin' AND enabled = 1")
     int enabledAdmins();
 
+    @Select("SELECT COUNT(*) FROM account WHERE role = 'admin' AND enabled = 1 FOR UPDATE")
+    int enabledAdminsForUpdate();
+
+    @Select("SELECT enabled, credentials_changed_at AS credentialsChangedAt FROM account WHERE username = #{username}")
+    Map<String, Object> findSessionState(@Param("username") String username);
+
     @Update("UPDATE account SET password_hash = #{hash}, credentials_changed_at = CURRENT_TIMESTAMP(6) "
         + "WHERE username = #{username}")
     int updatePassword(@Param("username") String username, @Param("hash") String hash);

@@ -40,6 +40,10 @@ public class AccountService {
         return account != null && flag(account.get("enabled"));
     }
 
+    public Map<String, Object> sessionState(String username) {
+        return mapper.findSessionState(username);
+    }
+
     public String role(String username) {
         Map<String, Object> account = mapper.find(username);
         return account == null ? "" : String.valueOf(account.get("role"));
@@ -75,7 +79,7 @@ public class AccountService {
         if (account == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在");
         }
-        if (!enabled && "admin".equals(String.valueOf(account.get("role"))) && mapper.enabledAdmins() <= 1) {
+        if (!enabled && "admin".equals(String.valueOf(account.get("role"))) && mapper.enabledAdminsForUpdate() <= 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "至少保留一名启用的管理员");
         }
         if (!enabled && username.equals(actor) && "admin".equals(String.valueOf(account.get("role")))) {

@@ -63,6 +63,11 @@ public class ProblemService {
         mapper.insertProblem(id, title.trim(), description.trim(), device);
         mapper.insertActivity(id, actor(), "create", "受理问题");
         if (mapper.insertCommandIfAbsent(requestId, digest, id) != 1) {
+            requireSameDigest(requestId, digest);
+            String concurrent = mapper.commandProblem(requestId);
+            if (concurrent != null) {
+                return concurrent;
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "请重试该请求");
         }
         return id;
@@ -101,11 +106,15 @@ public class ProblemService {
         Long cursorId = null;
         if (cursor != null && !cursor.trim().isEmpty()) {
             String[] parts = cursor.split("\\|", 2);
-            if (parts.length != 2) {
+            if (parts.length != 2 || parts[1].isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
             }
-            cursorDue = LocalDateTime.parse(parts[0]);
-            cursorId = Long.valueOf(parts[1]);
+            try {
+                cursorDue = LocalDateTime.parse(parts[0]);
+                cursorId = Long.valueOf(parts[1]);
+            } catch (DateTimeException | NumberFormatException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
+            }
         }
         int mine = "mine".equals(scope) ? 1 : 0;
         LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
@@ -216,10 +225,14 @@ public class ProblemService {
         String cursorId = null;
         if (cursor != null && !cursor.trim().isEmpty()) {
             String[] parts = cursor.split("\\|", 2);
-            if (parts.length != 2) {
+            if (parts.length != 2 || parts[1].isEmpty() || parts[1].length() > 36) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
             }
-            cursorUpdated = LocalDateTime.parse(parts[0]);
+            try {
+                cursorUpdated = LocalDateTime.parse(parts[0]);
+            } catch (DateTimeException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分页参数无效");
+            }
             cursorId = parts[1];
         }
         String actor = actor();
@@ -257,7 +270,7 @@ public class ProblemService {
         Row row = lockRow(id, expectedVersion);
         requireProcessingActor(row);
         requireFieldStageClear(id, row.state);
-        if (contactedAt == null || contactedAt.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
+        if (contactedAt == null || contactedAt.isAfter(LocalDateTime.now(BUSINESS_ZONE).plusMinutes(1))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写实际联系时间");
         }
         String result = note.trim();

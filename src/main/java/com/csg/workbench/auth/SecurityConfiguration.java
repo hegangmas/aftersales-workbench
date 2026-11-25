@@ -54,14 +54,20 @@ public class SecurityConfiguration {
                     SecurityContextHolder.getContext().getAuthentication();
                 if (authentication != null && authentication.isAuthenticated()
                     && authentication.getName() != null && !"anonymousUser".equals(authentication.getName())) {
-                    if (!accounts.enabled(authentication.getName())) {
+                    java.util.Map<String, Object> state = accounts.sessionState(authentication.getName());
+                    if (state == null || !AccountService.flag(state.get("enabled"))) {
+                        SecurityContextHolder.clearContext();
+                        HttpSession existing = ((HttpServletRequest) request).getSession(false);
+                        if (existing != null) {
+                            existing.invalidate();
+                        }
                         ((HttpServletResponse) response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                         return;
                     }
                     HttpServletRequest httpRequest = (HttpServletRequest) request;
                     HttpSession session = httpRequest.getSession(false);
                     Object seen = session == null ? null : session.getAttribute(WorkbenchSession.CREDENTIALS_CHANGED_AT);
-                    LocalDateTime changedAt = accounts.credentialsChangedAt(authentication.getName());
+                    LocalDateTime changedAt = toLocalDateTime(state.get("credentialsChangedAt"));
                     if (!(seen instanceof LocalDateTime) || changedAt == null || changedAt.isAfter((LocalDateTime) seen)) {
                         SecurityContextHolder.clearContext();
                         if (session != null) {
@@ -84,5 +90,15 @@ public class SecurityConfiguration {
             .deleteCookies("WORKBENCH_SESSION")
             .logoutSuccessHandler((request, response, auth) -> response.setStatus(HttpServletResponse.SC_NO_CONTENT));
         return http.build();
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime) {
+            return (LocalDateTime) value;
+        }
+        if (value instanceof java.sql.Timestamp) {
+            return ((java.sql.Timestamp) value).toLocalDateTime();
+        }
+        return null;
     }
 }

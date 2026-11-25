@@ -25,11 +25,11 @@ class SchemaUpgradeTest {
         + "&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8";
 
     @Test
-    void emptyDatabaseInitializesThroughV6() throws Exception {
+    void emptyDatabaseInitializesThroughV7() throws Exception {
         String schema = "soongo_aftersales_empty_init_test";
         recreate(schema);
         migrateClasspath(schema);
-        assertEquals("6", latestVersion(schema));
+        assertEquals("7", latestVersion(schema));
         assertTrue(tableExists(schema, "problem"));
         assertTrue(tableExists(schema, "account"));
         assertTrue(tableExists(schema, "security_audit"));
@@ -73,10 +73,16 @@ class SchemaUpgradeTest {
             assertEquals("1", scalar(statement,
                 "SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() "
                     + "AND table_name = 'problem' AND index_name = 'problem_board_updated'"));
+            assertEquals("1", scalar(statement,
+                "SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() "
+                    + "AND table_name = 'problem' AND index_name = 'problem_device_updated'"));
+            assertEquals("1", scalar(statement,
+                "SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() "
+                    + "AND table_name = 'followup' AND index_name = 'followup_due_queue'"));
             String changed = scalar(statement, "SELECT credentials_changed_at FROM account WHERE username = 'keptadmin'");
             assertTrue(changed != null && !changed.isEmpty());
         }
-        assertEquals("6", latestVersion(schema));
+        assertEquals("7", latestVersion(schema));
         assertFalse(auditStoresSecrets(schema));
     }
 

@@ -319,6 +319,22 @@ class ProblemServiceTest {
     }
 
     @Test
+    void dueAndMineRejectMalformedCursorWithBadRequest() {
+        ResponseStatusException badDueTime = assertThrows(ResponseStatusException.class,
+            () -> service.due("team", "not-a-time|12", 20));
+        assertEquals(HttpStatus.BAD_REQUEST, badDueTime.getStatus());
+        assertEquals("分页参数无效", badDueTime.getReason());
+        ResponseStatusException badDueId = assertThrows(ResponseStatusException.class,
+            () -> service.due("team", "2026-11-25T10:00:00|abc", 20));
+        assertEquals(HttpStatus.BAD_REQUEST, badDueId.getStatus());
+        assertEquals("分页参数无效", badDueId.getReason());
+        ResponseStatusException badMine = assertThrows(ResponseStatusException.class,
+            () -> service.mine("not-a-time|id-1", 20));
+        assertEquals(HttpStatus.BAD_REQUEST, badMine.getStatus());
+        assertEquals("分页参数无效", badMine.getReason());
+    }
+
+    @Test
     void shortNumberAndUuidBothResolve() {
         Map<String, Object> found = new LinkedHashMap<String, Object>();
         found.put("id", ID);
