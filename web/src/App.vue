@@ -46,7 +46,14 @@
             @blur="hideNameTip"
             @click="toggleNameTip"
           >{{ account.username }}</span>
-          <span class="role-pill">{{ account.role === 'admin' ? '管理员' : '坐席' }}</span>
+          <div class="profile-meta">
+            <span class="role-pill">{{ account.role === 'admin' ? '管理员' : '坐席' }}</span>
+            <select v-model="agentStatus" class="agent-status-select" :class="agentStatus" aria-label="坐席在岗状态" @change="persistAgentStatus">
+              <option value="ready">● 就绪</option>
+              <option value="break">● 休息</option>
+              <option value="away">● 离岗</option>
+            </select>
+          </div>
         </div>
         <button class="exit" type="button" aria-label="退出登录" @click="signOut">
           <NavIcon name="exit" />
@@ -148,7 +155,12 @@ import { initial, orderNumber, summaryScope } from './status'
 import { currentAccount, login, logout, addEvidence, addFollowup, assessProblem, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, escalateProblem, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, quickCloseProblem, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, setAccountEnabled, suspendProblem, withdrawField } from './api/workbench'
 
 const REMEMBER_KEY = 'songguo-workbench-username'
+const AGENT_STATUS_KEY = 'songguo-agent-status'
 const pageSize = 10
+const agentStatus = ref(localStorage.getItem(AGENT_STATUS_KEY) || 'ready')
+function persistAgentStatus() {
+  localStorage.setItem(AGENT_STATUS_KEY, agentStatus.value)
+}
 const query = ref('')
 const title = ref('')
 const description = ref('')

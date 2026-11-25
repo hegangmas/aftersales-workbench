@@ -81,10 +81,46 @@
             <span>{{ displayStatus(item).label }}</span>
           </li>
         </ul>
+
+        <div class="detail-extra">
+          <h3>维修记录（模拟）</h3>
+          <ul v-if="repairHistory.length" class="record-list">
+            <li v-for="(rep, idx) in repairHistory" :key="idx">
+              <time>{{ rep.date }} · {{ rep.source }}</time>
+              <div>{{ rep.summary }}</div>
+            </li>
+          </ul>
+          <p v-else class="muted">暂无历史维修记录</p>
+
+          <h3>通话录音（模拟 · {{ callRecordings.length }} 条）</h3>
+          <ul v-if="callRecordings.length" class="recording-list">
+            <li v-for="rec in callRecordings" :key="rec.id">
+              <div>
+                <strong>{{ rec.title }}</strong>
+                <small>{{ rec.time }} · 时长 {{ rec.duration }}</small>
+              </div>
+              <button class="btn secondary btn-xs" type="button" @click="playingId = playingId === rec.id ? '' : rec.id">
+                {{ playingId === rec.id ? '停止' : '试听(模拟)' }}
+              </button>
+            </li>
+          </ul>
+          <p v-if="playingId" class="stage-note">正在模拟播放录音 {{ playingId }}（400 呼叫中心接入后将直连真实录音流）。</p>
+        </div>
+
+        <div class="platform-jump">
+          <button class="btn secondary" type="button" @click="jumpNotice = !jumpNotice">⇄ 跳转设备平台</button>
+          <p v-if="jumpNotice" class="muted">充电桩管理平台直链待 REQ-002 联调确认后开通（当前桩号：{{ problem.device || '未关联' }}）。</p>
+        </div>
       </section>
 
       <section class="panel">
         <h2>当前问题、SOP 与证据</h2>
+        <div class="progress-track" aria-label="工单处理进度">
+          <div v-for="(step, idx) in progressSteps" :key="step.label" class="progress-step" :class="{ done: idx <= currentStepIndex, current: idx === currentStepIndex }">
+            <span class="step-dot">{{ idx < currentStepIndex ? '✓' : idx + 1 }}</span>
+            <span class="step-label">{{ step.label }}</span>
+          </div>
+        </div>
         <div class="personal-box">
           <strong>客户描述：</strong>{{ problem.description || '暂无描述' }}
           <p v-if="problem.faultOccurredAt" class="muted">故障发生时点：{{ dateLabel(problem.faultOccurredAt) }}</p>
@@ -157,6 +193,12 @@
               {{ item.action === 'claim' ? '认领' : '由 ' + ownerName(item.fromOwner) + ' 交给 ' + ownerName(item.toOwner) }}<span v-if="item.reason"> · {{ item.reason }}</span>
             </li>
           </ul>
+        </div>
+        <div v-if="canProcess" class="quick-bar">
+          <button class="btn primary" type="button" @click="focusEl('action-note')">记录跟进</button>
+          <button class="btn secondary" type="button" @click="focusEl('action-callback')">安排回访</button>
+          <button class="btn secondary" type="button" @click="focusEl('action-field')">派单至智享乐装</button>
+          <button class="btn secondary" type="button" @click="focusEl('problem-actions')">全部操作</button>
         </div>
       </section>
 
@@ -303,6 +345,8 @@ defineEmits([
 
 const fieldLabels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }
 const mobileCompact = ref(true)
+const playingId = ref('')
+const jumpNotice = ref(false)
 const number = computed(() => orderNumber(props.problem))
 const status = computed(() => displayStatus(props.problem))
 const unowned = computed(() => isUnowned(props.problem))
@@ -310,6 +354,33 @@ const ownerText = computed(() => unowned.value ? '无主' : props.problem.owner)
 const kindText = computed(() => kindLabel(props.problem.kind) || '问题')
 const isCompromise = computed(() => Number(props.problem.compromiseFlag || 0) === 1 || props.problem.compromiseFlag === true)
 const sla = computed(() => slaPresentation(props.problem.slaDueAt, props.problem.state))
+const progressSteps = [
+  { label: '受理' },
+  { label: '联系' },
+  { label: '派单' },
+  { label: '上门' },
+  { label: '完工' },
+  { label: '回访' }
+]
+const currentStepIndex = computed(() => {
+  const s = props.problem.state
+  if (s === 'resolved' || s === 'answered' || s === 'referred') return 5
+  if (s === 'verify') return 4
+  if (s === 'field') return props.fieldInProgress ? 3 : 2
+  const hasContact = (props.problem.activities || []).some(a => ['followup', 'callback', 'schedule', 'suspend'].includes(a.action))
+  return hasContact ? 1 : 0
+})
+const repairHistory = computed(() => device.value?.repairHistory || [
+  { date: '2026-10-12', summary: '更换 4G 通信模块', source: '智享乐装（模拟）' },
+  { date: '2026-09-05', summary: '远程升级主板程序', source: '远程（模拟）' }
+])
+const callRecordings = computed(() => device.value?.callRecordings || [
+  { id: 'REC-SIM-01', time: '11-25 10:22', title: '首次来电确认故障现象', duration: '01:45' },
+  { id: 'REC-SIM-02', time: '11-25 10:15', title: '400 转接接入录音', duration: '03:28' }
+])
+function focusEl(id) {
+  (document.getElementById(id) || document.getElementById('problem-actions'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const device = ref(null)
 const history = ref([])

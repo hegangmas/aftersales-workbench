@@ -50,6 +50,8 @@ public class DeviceService {
         device.put("currentStatus", "告警中（模拟）");
         device.put("chargingRecords", acChargingRecords());
         device.put("recentAlerts", acAlerts());
+        device.put("repairHistory", acRepairs());
+        device.put("callRecordings", acRecordings());
         device.put("simulatedCall", call("CALL-SIM-20261125-01", "19900000001", "02:36", "模拟录音已挂接（400 未接入）"));
         return device;
     }
@@ -74,6 +76,8 @@ public class DeviceService {
         device.put("currentStatus", "离线（模拟）");
         device.put("chargingRecords", dcChargingRecords());
         device.put("recentAlerts", dcAlerts());
+        device.put("repairHistory", dcRepairs());
+        device.put("callRecordings", dcRecordings());
         device.put("simulatedCall", call("CALL-SIM-20261125-02", "19900000002", "01:48", "模拟录音已挂接（400 未接入）"));
         return device;
     }
@@ -131,6 +135,49 @@ public class DeviceService {
         item.put("caller", caller);
         item.put("duration", duration);
         item.put("recordingStatus", recordingStatus);
+        return item;
+    }
+
+    private static List<Map<String, Object>> acRepairs() {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        list.add(repair("2026-10-12", "更换 4G 通信模块", "智享乐装（模拟）"));
+        list.add(repair("2026-09-05", "远程升级主板程序至 v2.4.18", "远程（模拟）"));
+        return list;
+    }
+
+    private static List<Map<String, Object>> dcRepairs() {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        list.add(repair("2026-08-18", "更换物联网 SIM 卡", "智享乐装（模拟）"));
+        return list;
+    }
+
+    private static List<Map<String, Object>> acRecordings() {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        list.add(recording("REC-SIM-01", "11-25 10:22", "首次来电确认故障现象", "01:45"));
+        list.add(recording("REC-SIM-02", "11-25 10:15", "400 转接接入录音", "03:28"));
+        return list;
+    }
+
+    private static List<Map<String, Object>> dcRecordings() {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        list.add(recording("REC-SIM-03", "11-25 08:20", "场站运维报修离线录音", "01:48"));
+        return list;
+    }
+
+    private static Map<String, Object> repair(String date, String summary, String source) {
+        Map<String, Object> item = new LinkedHashMap<String, Object>();
+        item.put("date", date);
+        item.put("summary", summary);
+        item.put("source", source);
+        return item;
+    }
+
+    private static Map<String, Object> recording(String id, String time, String title, String duration) {
+        Map<String, Object> item = new LinkedHashMap<String, Object>();
+        item.put("id", id);
+        item.put("time", time);
+        item.put("title", title);
+        item.put("duration", duration);
         return item;
     }
 }

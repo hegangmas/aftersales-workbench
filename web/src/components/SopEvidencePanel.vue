@@ -31,7 +31,29 @@
     </div>
 
     <div class="personal-box sop-section">
-      <strong>已登记证据</strong>
+      <div class="section-row">
+        <strong>已登记证据（{{ problem.evidences?.length || 0 }} 条）</strong>
+        <span class="muted">缩略预览（未接 OSS 时展示模拟缩略图）</span>
+      </div>
+      <div v-if="problem.evidences?.length" class="evidence-thumbs">
+        <div v-for="(item, idx) in problem.evidences" :key="'thumb-' + (item.id || idx)" class="evidence-thumb">
+          <span class="thumb-badge">{{ evidenceTypeLabel(item.evidenceType) || item.evidenceType }}</span>
+          <strong class="thumb-name">{{ item.fileName || item.note }}</strong>
+          <small>{{ sourceLabel(item.source) }} · {{ dateLabel(item.createdAt) }}</small>
+        </div>
+      </div>
+      <div v-else class="evidence-thumbs">
+        <div class="evidence-thumb sample">
+          <span class="thumb-badge">模拟照片</span>
+          <strong class="thumb-name">桩体铭牌与告警灯.jpg</strong>
+          <small>模拟占位 · 登记证据后替换</small>
+        </div>
+        <div class="evidence-thumb sample">
+          <span class="thumb-badge">模拟录屏</span>
+          <strong class="thumb-name">插枪启动失败_00:12.mp4</strong>
+          <small>模拟占位 · 支持登记元数据</small>
+        </div>
+      </div>
       <ul v-if="problem.evidences?.length" class="record-list sop-list">
         <li v-for="(item, idx) in problem.evidences" :key="item.id || idx">
           <time>
