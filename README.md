@@ -27,6 +27,8 @@ V5 只新增账号、归属记录和索引。回滚到不含 V5 的包时，设�
 
 V6 只新增总表索引 `problem_board_updated`、账号列 `credentials_changed_at` 和审计表 `security_audit`。审计表只有操作者、动作和目标账号，不保存口令或哈希。回滚到仍带 V6 脚本的包时，多出的列、索引和表可以留着，旧查询没有 `SELECT *`。回滚到不含 V6 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`。不要删除问题单或账号，不要执行 `flyway clean`，也不要手工删这三样对象，除非已经确认没有程序再读它们。已有负责人仍是原来的值；历史 `owner=early` 继续表示无主。
 
+V7 只新增查桩历史索引 `problem_device_updated`（`problem(device, updated_at)`）和到期回访索引 `followup_due_queue`（`followup(state, due_at, id)`），不改动表结构与已有数据。回滚到不含 V7 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`，不要清库。
+
 ## 找代码
 
 - `device` 提供设备和故障查询，当前使用模拟数据。
