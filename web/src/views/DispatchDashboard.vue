@@ -1,5 +1,43 @@
 <template>
-  <section class="dispatch-dashboard" aria-label="统一工单池调度大屏">
+  <section
+    class="dispatch-dashboard"
+    :class="{ 'is-fullscreen': isFullscreen }"
+    aria-label="统一工单池调度大屏"
+  >
+    <header class="dash-topbar">
+      <div class="topbar-left">
+        <div class="topbar-title-row">
+          <span class="live-indicator" aria-hidden="true"></span>
+          <h2 class="topbar-title">统一工单池调度大屏</h2>
+          <span v-if="isFullscreen" class="mode-badge">值守全屏</span>
+        </div>
+        <div class="topbar-meta">
+          <span class="live-clock" aria-label="当前时间">{{ liveClock }}</span>
+          <span class="meta-sep" aria-hidden="true">·</span>
+          <span class="duty-stat">在岗 {{ onDutyCount }} 人 · 待分配 {{ unclaimedCountDisplay }}</span>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <span v-if="isFullscreen" class="esc-hint">按 ESC 退出全屏</span>
+        <button
+          type="button"
+          class="fullscreen-btn"
+          :class="{ active: isFullscreen }"
+          :aria-pressed="isFullscreen"
+          @click="toggleFullscreen"
+        >
+          <svg v-if="!isFullscreen" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          </svg>
+          <span>{{ isFullscreen ? '退出全屏' : '全屏值守模式' }}</span>
+        </button>
+      </div>
+    </header>
+
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-head">
@@ -61,22 +99,67 @@
 
     <div class="mid-grid">
       <section class="dash-card pool-card" aria-label="工单池列表">
-        <header class="card-header">
-          <div>
+        <header class="card-header pool-header">
+          <div class="pool-heading">
             <h2>工单池列表</h2>
-            <p class="card-sub">展示当前池内前 {{ poolRows.length }} 条工单，优先高亮超时与待分配工单</p>
+            <p class="card-sub">优先高亮超时与待分配工单，支持多维筛选与快速认领</p>
           </div>
-          <button
-            type="button"
-            class="link-btn"
-            @click="$emit('open-board', '')"
-          >
-            查看完整总表 →
-          </button>
+
+          <div class="pool-toolbar">
+            <select
+              v-model="filterChannel"
+              class="pool-filter-select"
+              aria-label="来源筛选"
+            >
+              <option value="">全部来源</option>
+              <option v-for="opt in CHANNEL_FILTER_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+
+            <select
+              v-model="filterStatus"
+              class="pool-filter-select"
+              aria-label="状态筛选"
+            >
+              <option value="">全部状态</option>
+              <option v-for="opt in STATUS_FILTER_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+
+            <select
+              v-model="filterPriority"
+              class="pool-filter-select"
+              aria-label="优先级筛选"
+            >
+              <option value="">全部优先级</option>
+              <option v-for="opt in PRIORITY_FILTER_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+
+            <input
+              v-model.trim="filterKeyword"
+              type="search"
+              class="pool-filter-input"
+              placeholder="搜索工单号/故障内容"
+              aria-label="搜索工单号/故障内容"
+              maxlength="60"
+            />
+
+            <button
+              type="button"
+              class="link-btn"
+              @click="$emit('open-board', '')"
+            >
+              查看完整总表 →
+            </button>
+          </div>
         </header>
 
-        <p v-if="!poolRows.length" class="empty-state">
-          当前工单池暂无可展示工单，可前往完整总表查看历史记录。
+        <p v-if="!pagedRows.length" class="empty-state">
+          {{ hasActivePoolFilter ? '没有符合当前筛选条件的工单，可清空筛选条件后重试。' : '当前工单池暂无可展示工单，可前往完整总表查看历史记录。' }}
         </p>
 
         <template v-else>
@@ -92,17 +175,17 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th>单号</th>
-                  <th>来源渠道</th>
-                  <th>标题</th>
-                  <th>SLA 剩余</th>
+                  <th>工单号</th>
+                  <th>来源</th>
+                  <th>故障</th>
+                  <th>SLA剩余</th>
                   <th>状态</th>
                   <th>处理人</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="row in poolRows"
+                  v-for="row in pagedRows"
                   :key="row.item.id"
                   :class="rowClass(row)"
                 >
@@ -120,7 +203,8 @@
                   </td>
                   <td>
                     <div class="title-cell">
-                      <span v-if="row.kind" class="kind-tag" :class="row.item.kind">{{ row.kind }}</span>
+                      <span v-if="row.priority === 'high'" class="priority-tag high">高优</span>
+                      <span v-else-if="row.kind" class="kind-tag" :class="row.item.kind">{{ row.kind }}</span>
                       <button
                         type="button"
                         class="title-btn"
@@ -148,7 +232,7 @@
                       <template v-if="row.unowned">
                         <span class="unowned-label">待分配</span>
                         <button
-                          v-if="row.item.state !== 'resolved'"
+                          v-if="!row.isTerminal"
                           type="button"
                           class="claim-mini"
                           :disabled="busy"
@@ -170,7 +254,7 @@
 
           <div class="mobile-pool-list">
             <article
-              v-for="row in poolRows"
+              v-for="row in pagedRows"
               :key="'m-' + row.item.id"
               class="mobile-pool-item"
               :class="rowClass(row)"
@@ -203,6 +287,41 @@
             </article>
           </div>
         </template>
+
+        <footer class="pool-pagination">
+          <span class="pool-total">共 {{ filteredRows.length }} 条</span>
+          <div class="page-controls" role="navigation" aria-label="工单池分页">
+            <button
+              type="button"
+              class="page-btn"
+              :disabled="currentPage <= 1"
+              aria-label="上一页"
+              @click="currentPage -= 1"
+            >
+              ‹
+            </button>
+            <button
+              v-for="p in pageNumbers"
+              :key="p"
+              type="button"
+              class="page-btn"
+              :class="{ active: p === currentPage }"
+              :aria-current="p === currentPage ? 'page' : undefined"
+              @click="currentPage = p"
+            >
+              {{ p }}
+            </button>
+            <button
+              type="button"
+              class="page-btn"
+              :disabled="currentPage >= totalPages"
+              aria-label="下一页"
+              @click="currentPage += 1"
+            >
+              ›
+            </button>
+          </div>
+        </footer>
       </section>
 
       <section class="dash-card agent-card" aria-label="坐席在岗状态">
@@ -210,10 +329,10 @@
           <div>
             <h2>坐席在岗状态</h2>
             <p class="card-sub">
-              {{ hasRealAssignees ? '名单取自系统账号，在岗状态与时长为模拟' : '未加载账号列表，展示模拟坐席' }}
+              {{ hasRealAssignees ? '点击右侧胶囊切换状态（就绪 → 休息 → 离岗）' : '未加载账号列表，展示模拟坐席（可点击切换演示）' }}
             </p>
           </div>
-          <span class="mock-badge">模拟</span>
+          <span class="duty-ratio-badge">{{ onDutyCount }} / {{ agentRows.length }} 在岗</span>
         </header>
 
         <ul class="agent-list">
@@ -225,23 +344,32 @@
                   <strong>{{ agent.username }}</strong>
                   <span class="role-tag">{{ agent.roleLabel }}</span>
                 </div>
-                <span class="agent-duration">在岗时长（模拟）：{{ agent.duration }}</span>
+                <span class="agent-duration">{{ agent.durationText }}</span>
               </div>
             </div>
-            <span class="presence-pill" :class="agent.status">
+            <button
+              type="button"
+              class="presence-pill"
+              :class="agent.status"
+              :disabled="busy || updatingAgent === agent.username"
+              :title="'点击切换在岗状态（当前：' + agent.statusLabel + '）'"
+              @click="cycleAgentDuty(agent)"
+            >
               <i></i>{{ agent.statusLabel }}
-            </span>
+            </button>
           </li>
         </ul>
+
+        <p v-if="dutyError" role="alert" class="duty-error">{{ dutyError }}</p>
 
         <div class="agent-footer">
           <button
             type="button"
             class="assign-btn"
             :disabled="busy"
-            @click="simulateEvenAssign"
+            @click="handleForceDistribute"
           >
-            一键强制平均分配（模拟）
+            一键强制平均分配
           </button>
           <p v-if="assignNotice" role="status" class="assign-notice">
             {{ assignNotice }}
@@ -252,18 +380,34 @@
 
     <div class="bottom-grid">
       <section class="dash-card" aria-label="渠道分布">
-        <header class="card-header">
+        <header class="card-header trend-header">
           <div>
             <h2>渠道分布</h2>
-            <p class="card-sub">各受理渠道工单占比</p>
+            <p class="card-sub">各受理渠道工单数与占比</p>
           </div>
-          <span class="mock-badge">模拟</span>
+          <div class="channel-header-right">
+            <div class="range-switch" role="group" aria-label="渠道统计周期">
+              <button
+                v-for="opt in channelRanges"
+                :key="opt.id"
+                type="button"
+                :aria-pressed="channelRange === opt.id"
+                @click="channelRange = opt.id"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+            <span class="mock-badge">{{ channelUsingLiveData ? '实时' : '模拟' }}</span>
+          </div>
         </header>
         <ul class="channel-bars">
           <li v-for="ch in channelDistribution" :key="ch.name" class="channel-bar-row">
             <div class="channel-bar-meta">
               <span class="channel-name">{{ ch.name }}</span>
-              <strong class="channel-pct">{{ ch.percent }}%</strong>
+              <span class="channel-values">
+                <span class="channel-count">{{ ch.count }} 单</span>
+                <strong class="channel-pct">{{ ch.percent }}%</strong>
+              </span>
             </div>
             <div class="bar-track" aria-hidden="true">
               <div
@@ -358,13 +502,24 @@
         </div>
       </section>
 
-      <section class="dash-card" aria-label="本月排班表">
-        <header class="card-header">
+      <section class="dash-card" aria-label="本月排班">
+        <header class="card-header trend-header">
           <div>
-            <h2>本月排班表</h2>
+            <h2>本月排班</h2>
             <p class="card-sub">早班 / 晚班坐席轮值安排</p>
           </div>
-          <span class="mock-badge">模拟</span>
+          <div class="schedule-controls">
+            <select
+              v-model="selectedMonth"
+              class="month-select"
+              aria-label="选择排班月份"
+            >
+              <option v-for="m in monthOptions" :key="m.value" :value="m.value">
+                {{ m.label }}
+              </option>
+            </select>
+            <span class="mock-badge">模拟</span>
+          </div>
         </header>
 
         <div class="schedule-wrap">
@@ -392,13 +547,18 @@
             </tbody>
           </table>
         </div>
+
+        <footer class="schedule-summary">
+          {{ scheduleSummaryText }}
+        </footer>
       </section>
     </div>
   </section>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { updateUserDuty } from '../api/workbench'
 import {
   avatarTone,
   channelLabel,
@@ -407,6 +567,7 @@ import {
   isUnowned,
   kindLabel,
   orderNumber,
+  roleLabel,
   shanghaiStamp,
   slaPresentation,
   stateCount
@@ -419,10 +580,94 @@ const props = defineProps({
   busy: Boolean
 })
 
-defineEmits(['open', 'open-board', 'claim'])
+const emit = defineEmits(['open', 'open-board', 'claim', 'force-distribute'])
+
+const TERMINAL_STATES = new Set(['resolved', 'closed', 'cancelled', 'answered', 'referred'])
+const POOL_PAGE_SIZE = 8
+const DUTY_ORDER = ['ready', 'break', 'away']
+const DUTY_LABELS = { ready: '就绪', break: '休息', away: '离岗' }
+
+const isFullscreen = ref(false)
+const nowMs = ref(Date.now())
+let clockTimer = null
+
+function formatShanghaiClock(ms) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date(ms))
+  const read = type => parts.find(part => part.type === type).value
+  return `${read('year')}-${read('month')}-${read('day')} ${read('hour')}:${read('minute')}:${read('second')}`
+}
+
+const liveClock = computed(() => formatShanghaiClock(nowMs.value))
+
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+}
+
+function onKeyDown(event) {
+  if (event.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+  }
+}
+
+onMounted(() => {
+  clockTimer = setInterval(() => {
+    nowMs.value = Date.now()
+  }, 1000)
+  window.addEventListener('keydown', onKeyDown)
+})
+
+onUnmounted(() => {
+  if (clockTimer) {
+    clearInterval(clockTimer)
+    clockTimer = null
+  }
+  window.removeEventListener('keydown', onKeyDown)
+})
 
 const assignNotice = ref('')
-const trendRange = ref('7d')
+const dutyError = ref('')
+const updatingAgent = ref('')
+const trendRange = ref('30d')
+const channelRange = ref('month')
+
+const filterChannel = ref('')
+const filterStatus = ref('')
+const filterPriority = ref('')
+const filterKeyword = ref('')
+const currentPage = ref(1)
+
+const CHANNEL_FILTER_OPTIONS = [
+  { value: '400', label: '400电话' },
+  { value: 'miniprogram', label: '客户小程序' },
+  { value: 'provider', label: '服务商扫码' },
+  { value: 'wecom', label: '企微群' },
+  { value: 'phone', label: '电话' }
+]
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'pending_assign', label: '待分配' },
+  { value: 'processing', label: '处理中' },
+  { value: 'suspended', label: '挂起' },
+  { value: 'pending_callback', label: '待回传' },
+  { value: 'pending_accept', label: '待验收' },
+  { value: 'closed', label: '已闭环' },
+  { value: 'cancelled', label: '已取消' }
+]
+
+const PRIORITY_FILTER_OPTIONS = [
+  { value: 'high', label: '高优先级' },
+  { value: 'normal', label: '中优先级' },
+  { value: 'low', label: '低优先级' }
+]
 
 const hasSummaryTotal = computed(() => props.summary !== null && props.summary.total !== undefined && props.summary.total !== null)
 const todayTotalDisplay = computed(() => (hasSummaryTotal.value ? Number(props.summary.total) : 32))
@@ -430,14 +675,19 @@ const todayTotalDisplay = computed(() => (hasSummaryTotal.value ? Number(props.s
 const hasUnclaimedSummary = computed(() => Boolean(props.summary && props.summary.states && props.summary.states.unclaimed !== undefined))
 const unclaimedCountDisplay = computed(() => {
   if (hasUnclaimedSummary.value) return stateCount(props.summary, 'unclaimed')
-  if (props.items.length) return props.items.filter(item => isUnowned(item) && item.state !== 'resolved').length
+  if (props.items.length) {
+    return props.items.filter(item => isUnowned(item) && !TERMINAL_STATES.has(item.state)).length
+  }
   return 6
 })
 
 const hasSlaData = computed(() => props.items.some(item => item && item.slaDueAt))
 const overdueCountDisplay = computed(() => {
   if (hasSlaData.value) {
-    return props.items.filter(item => slaPresentation(item.slaDueAt, item.state)?.overdue).length
+    return props.items.filter(item => {
+      if (!item || TERMINAL_STATES.has(item.state)) return false
+      return Boolean(slaPresentation(item.slaDueAt, item.state)?.overdue)
+    }).length
   }
   return 2
 })
@@ -458,14 +708,18 @@ function parseShanghaiEpoch(stamp) {
 
 function formatSlaRemaining(item) {
   if (!item) return { label: '—', tone: 'none', overdue: false }
+  if (item.state === 'closed') return { label: '已闭环', tone: 'closed', overdue: false }
+  if (item.state === 'cancelled') return { label: '已取消', tone: 'closed', overdue: false }
   if (item.state === 'resolved') return { label: '已结案', tone: 'closed', overdue: false }
   if (!item.slaDueAt) return { label: '未设置', tone: 'none', overdue: false }
 
   const dueEpoch = parseShanghaiEpoch(item.slaDueAt)
-  const nowEpoch = parseShanghaiEpoch(shanghaiStamp())
+  const nowEpoch = parseShanghaiEpoch(shanghaiStamp(new Date(nowMs.value)))
   if (dueEpoch === null || nowEpoch === null) {
     const fallback = slaPresentation(item.slaDueAt, item.state)
-    return fallback ? { label: fallback.text, tone: fallback.overdue ? 'overdue' : 'normal', overdue: fallback.overdue } : { label: '—', tone: 'none', overdue: false }
+    return fallback
+      ? { label: fallback.text, tone: fallback.overdue ? 'overdue' : 'normal', overdue: fallback.overdue }
+      : { label: '—', tone: 'none', overdue: false }
   }
 
   const diffMins = Math.round((dueEpoch - nowEpoch) / 60000)
@@ -490,16 +744,34 @@ function formatSlaRemaining(item) {
   }
 }
 
-const poolRows = computed(() => {
-  return props.items.slice(0, 8).map(item => {
-    const unowned = isUnowned(item) && item.state !== 'resolved'
+function normalizeStatusFilterKey(row) {
+  const state = row.item?.state || ''
+  const sid = row.status?.id || ''
+  if (row.unowned || state === 'pending_assign' || sid === 'unclaimed') return 'pending_assign'
+  if (state === 'processing' || state === 'open' || sid === 'processing' || sid === 'open') return 'processing'
+  if (state === 'suspended' || state === 'waiting' || sid === 'suspended' || sid === 'waiting') return 'suspended'
+  if (state === 'pending_callback' || sid === 'pending_callback' || sid === 'fieldPending' || sid === 'fieldActive') return 'pending_callback'
+  if (state === 'pending_accept' || sid === 'pending_accept' || sid === 'verify') return 'pending_accept'
+  if (state === 'cancelled' || sid === 'cancelled') return 'cancelled'
+  if (TERMINAL_STATES.has(state) || TERMINAL_STATES.has(sid)) return 'closed'
+  return sid || state
+}
+
+const allPoolRows = computed(() => {
+  return props.items.map(item => {
+    const isTerminal = TERMINAL_STATES.has(item.state)
+    const unowned = isUnowned(item) && !isTerminal
     const sla = formatSlaRemaining(item)
+    const priority = String(item.urgency || item.priority || 'normal').toLowerCase()
     return {
       item,
       number: orderNumber(item),
+      channelKey: item.channel || '',
       channel: channelLabel(item.channel) || item.channel || '未标注',
       kind: kindLabel(item.kind),
+      priority,
       status: displayStatus(item),
+      isTerminal,
       unowned,
       sla,
       compromise: Number(item.compromiseFlag || 0) === 1 || item.compromiseFlag === true,
@@ -509,6 +781,56 @@ const poolRows = computed(() => {
   })
 })
 
+const hasActivePoolFilter = computed(() =>
+  Boolean(filterChannel.value || filterStatus.value || filterPriority.value || filterKeyword.value)
+)
+
+const filteredRows = computed(() => {
+  const kw = filterKeyword.value.toLowerCase()
+  return allPoolRows.value.filter(row => {
+    if (filterChannel.value && row.channelKey !== filterChannel.value) return false
+    if (filterStatus.value && normalizeStatusFilterKey(row) !== filterStatus.value) return false
+    if (filterPriority.value && row.priority !== filterPriority.value) return false
+    if (kw) {
+      const hay = [
+        row.number,
+        row.item.title,
+        row.item.description,
+        row.item.device,
+        row.item.category
+      ].filter(Boolean).join(' ').toLowerCase()
+      if (!hay.includes(kw)) return false
+    }
+    return true
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / POOL_PAGE_SIZE)))
+
+const pagedRows = computed(() => {
+  const safePage = Math.min(Math.max(1, currentPage.value), totalPages.value)
+  const start = (safePage - 1) * POOL_PAGE_SIZE
+  return filteredRows.value.slice(start, start + POOL_PAGE_SIZE)
+})
+
+const pageNumbers = computed(() => {
+  const total = totalPages.value
+  const curr = Math.min(Math.max(1, currentPage.value), total)
+  const start = Math.max(1, Math.min(curr - 2, total - 4))
+  const end = Math.min(total, start + 4)
+  const pages = []
+  for (let i = start; i <= end; i += 1) pages.push(i)
+  return pages
+})
+
+watch([filterChannel, filterStatus, filterPriority, filterKeyword, () => props.items.length], () => {
+  currentPage.value = 1
+})
+
+watch(totalPages, nextTotal => {
+  if (currentPage.value > nextTotal) currentPage.value = nextTotal
+})
+
 function rowClass(row) {
   if (row.sla.overdue) return 'row-overdue'
   if (row.unowned) return 'row-unassigned'
@@ -516,53 +838,189 @@ function rowClass(row) {
 }
 
 const MOCK_AGENTS = [
-  { username: '张三', roleLabel: '一线坐席', status: 'ready', statusLabel: '就绪', duration: '04h 18m' },
-  { username: '李四', roleLabel: '一线坐席', status: 'ready', statusLabel: '就绪', duration: '03h 52m' },
-  { username: '赵六', roleLabel: '二线专家', status: 'break', statusLabel: '休息', duration: '02h 40m' },
-  { username: '陈七', roleLabel: '值班组长', status: 'away', statusLabel: '离岗', duration: '01h 15m' }
+  { username: '张三', roleLabel: '一线坐席', status: 'ready', duration: '04h 18m' },
+  { username: '李四', roleLabel: '一线坐席', status: 'ready', duration: '03h 52m' },
+  { username: '赵六', roleLabel: '二线专家', status: 'break', duration: '02h 40m' },
+  { username: '陈七', roleLabel: '值班组长', status: 'away', duration: '01h 15m' }
 ]
 
-const STATUS_CYCLE = [
-  { status: 'ready', statusLabel: '就绪', duration: '04h 12m' },
-  { status: 'ready', statusLabel: '就绪', duration: '03h 36m' },
-  { status: 'break', statusLabel: '休息', duration: '02h 25m' },
-  { status: 'away', statusLabel: '离岗', duration: '01h 08m' }
-]
+const dutyOverrides = reactive({})
+const mockDutyStates = reactive({})
 
-const hasRealAssignees = computed(() => props.assignees && props.assignees.length > 0)
+watch(
+  () => props.assignees,
+  list => {
+    const names = new Set((list || []).map(a => a && a.username).filter(Boolean))
+    Object.keys(dutyOverrides).forEach(key => {
+      if (!names.has(key)) delete dutyOverrides[key]
+    })
+  },
+  { deep: true }
+)
+
+const hasRealAssignees = computed(() => Array.isArray(props.assignees) && props.assignees.length > 0)
+
+function formatElapsedFromStamp(value) {
+  if (!value) return ''
+  let epoch = null
+  if (Array.isArray(value) && value.length >= 5) {
+    epoch = Date.UTC(value[0], value[1] - 1, value[2], value[3], value[4])
+  } else {
+    epoch = parseShanghaiEpoch(value)
+  }
+  if (epoch === null) return ''
+  const nowEpoch = parseShanghaiEpoch(shanghaiStamp(new Date(nowMs.value)))
+  if (nowEpoch === null) return ''
+  const diffMins = Math.max(0, Math.round((nowEpoch - epoch) / 60000))
+  const h = Math.floor(diffMins / 60)
+  const m = diffMins % 60
+  if (h > 0) return `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`
+  return `${m}m`
+}
 
 const agentRows = computed(() => {
   if (!hasRealAssignees.value) {
-    return MOCK_AGENTS.map(item => ({
-      ...item,
-      initial: initial(item.username),
-      tone: avatarTone(item.username)
-    }))
+    return MOCK_AGENTS.map(item => {
+      const status = mockDutyStates[item.username] || item.status
+      return {
+        username: item.username,
+        roleLabel: item.roleLabel,
+        status,
+        statusLabel: DUTY_LABELS[status] || '就绪',
+        durationText: `状态时长（模拟）：${item.duration}`,
+        initial: initial(item.username),
+        tone: avatarTone(item.username)
+      }
+    })
   }
-  return props.assignees.map((item, idx) => {
-    const preset = STATUS_CYCLE[idx % STATUS_CYCLE.length]
+  return props.assignees.map(item => {
+    const override = dutyOverrides[item.username]
+    const rawStatus = override?.status || item.dutyStatus || 'ready'
+    const status = DUTY_ORDER.includes(rawStatus) ? rawStatus : 'ready'
+    const updatedAt = override?.updatedAt || item.dutyUpdatedAt
+    const elapsed = formatElapsedFromStamp(updatedAt)
     return {
       username: item.username,
-      roleLabel: item.role === 'admin' ? '管理员' : '坐席',
-      status: preset.status,
-      statusLabel: preset.statusLabel,
-      duration: preset.duration,
+      roleLabel: roleLabel(item.role),
+      status,
+      statusLabel: DUTY_LABELS[status] || '就绪',
+      durationText: elapsed ? `持续时长：${elapsed}` : '状态已同步',
       initial: initial(item.username),
       tone: avatarTone(item.username)
     }
   })
 })
 
-function simulateEvenAssign() {
-  assignNotice.value = '已按在岗就绪坐席模拟均分待分配工单（演示）'
+const onDutyCount = computed(() => agentRows.value.filter(agent => agent.status !== 'away').length)
+
+async function cycleAgentDuty(agent) {
+  if (updatingAgent.value === agent.username) return
+  const idx = DUTY_ORDER.indexOf(agent.status)
+  const nextStatus = DUTY_ORDER[(idx + 1) % DUTY_ORDER.length]
+  dutyError.value = ''
+
+  if (!hasRealAssignees.value) {
+    mockDutyStates[agent.username] = nextStatus
+    return
+  }
+
+  const prev = dutyOverrides[agent.username] ? { ...dutyOverrides[agent.username] } : null
+  dutyOverrides[agent.username] = {
+    status: nextStatus,
+    updatedAt: shanghaiStamp(new Date(nowMs.value))
+  }
+  updatingAgent.value = agent.username
+  try {
+    await updateUserDuty(agent.username, nextStatus)
+  } catch (err) {
+    if (prev) dutyOverrides[agent.username] = prev
+    else delete dutyOverrides[agent.username]
+    dutyError.value = (err && err.message) || '更新在岗状态失败，请重试'
+  } finally {
+    updatingAgent.value = ''
+  }
 }
 
-const channelDistribution = [
-  { name: '400热线', percent: 40, color: '#0f766e' },
-  { name: '服务商', percent: 22, color: '#0d9488' },
-  { name: '小程序', percent: 20, color: '#2dd4bf' },
-  { name: '企微群', percent: 18, color: '#64748b' }
+function handleForceDistribute() {
+  assignNotice.value = '已触发一键强制平均分配（按就绪坐席均分待分配工单）'
+  emit('force-distribute')
+}
+
+const channelRanges = [
+  { id: 'today', label: '今日' },
+  { id: '7d', label: '近7天' },
+  { id: 'month', label: '本月' }
 ]
+
+const CHANNEL_MOCK = {
+  today: [
+    { name: '400电话', count: 14, percent: 44, color: '#0f766e' },
+    { name: '客户小程序', count: 8, percent: 25, color: '#2dd4bf' },
+    { name: '服务商扫码', count: 6, percent: 19, color: '#0d9488' },
+    { name: '企微群', count: 4, percent: 12, color: '#64748b' }
+  ],
+  '7d': [
+    { name: '400电话', count: 52, percent: 41, color: '#0f766e' },
+    { name: '服务商扫码', count: 29, percent: 23, color: '#0d9488' },
+    { name: '客户小程序', count: 25, percent: 20, color: '#2dd4bf' },
+    { name: '企微群', count: 20, percent: 16, color: '#64748b' }
+  ],
+  month: [
+    { name: '400电话', count: 148, percent: 40, color: '#0f766e' },
+    { name: '服务商扫码', count: 82, percent: 22, color: '#0d9488' },
+    { name: '客户小程序', count: 74, percent: 20, color: '#2dd4bf' },
+    { name: '企微群', count: 66, percent: 18, color: '#64748b' }
+  ]
+}
+
+const CHANNEL_COLOR_MAP = {
+  '400': '#0f766e',
+  provider: '#0d9488',
+  miniprogram: '#2dd4bf',
+  wecom: '#64748b',
+  phone: '#14b8a6'
+}
+
+const channelLiveItems = computed(() => {
+  if (!props.items.length) return []
+  const nowStamp = shanghaiStamp(new Date(nowMs.value))
+  const todayStr = nowStamp.slice(0, 10)
+  const monthStr = nowStamp.slice(0, 7)
+  const nowEpoch = parseShanghaiEpoch(nowStamp)
+
+  return props.items.filter(item => {
+    if (!item || !item.updatedAt) return channelRange.value === 'month'
+    const stamp = String(item.updatedAt).replace('T', ' ').slice(0, 16)
+    if (channelRange.value === 'today') return stamp.slice(0, 10) === todayStr
+    if (channelRange.value === 'month') return stamp.slice(0, 7) === monthStr
+    const epoch = parseShanghaiEpoch(stamp)
+    if (epoch === null || nowEpoch === null) return true
+    return (nowEpoch - epoch) <= 7 * 24 * 60 * 60 * 1000
+  })
+})
+
+const channelUsingLiveData = computed(() => channelLiveItems.value.length > 0)
+
+const channelDistribution = computed(() => {
+  const matched = channelLiveItems.value
+  if (!matched.length) {
+    return CHANNEL_MOCK[channelRange.value] || CHANNEL_MOCK.month
+  }
+  const counts = {}
+  matched.forEach(item => {
+    const key = item.channel || 'other'
+    counts[key] = (counts[key] || 0) + 1
+  })
+  const total = matched.length
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, count]) => ({
+      name: channelLabel(key) || (key === 'other' ? '未标注' : key),
+      count,
+      percent: Math.round((count / total) * 100),
+      color: CHANNEL_COLOR_MAP[key] || '#64748b'
+    }))
+})
 
 const trendRanges = [
   { id: '7d', label: '近7天' },
@@ -597,9 +1055,9 @@ const TREND_DATA = {
   ]
 }
 
-const trendRangeLabel = computed(() => trendRanges.find(r => r.id === trendRange.value)?.label || '近7天')
+const trendRangeLabel = computed(() => trendRanges.find(r => r.id === trendRange.value)?.label || '近30天')
 
-const activeSeries = computed(() => TREND_DATA[trendRange.value] || TREND_DATA['7d'])
+const activeSeries = computed(() => TREND_DATA[trendRange.value] || TREND_DATA['30d'])
 
 const chartMax = computed(() => {
   const maxVal = Math.max(4, ...activeSeries.value.flatMap(d => [d.escalated, d.overdue]))
@@ -635,12 +1093,30 @@ const chartPoints = computed(() => {
 const escalatedPoints = computed(() => chartPoints.value.map(p => `${p.x},${p.yEsc}`).join(' '))
 const overduePoints = computed(() => chartPoints.value.map(p => `${p.x},${p.yOver}`).join(' '))
 
+function buildMonthOptions() {
+  const stamp = shanghaiStamp()
+  const year = Number(stamp.slice(0, 4))
+  const month = Number(stamp.slice(5, 7))
+  const offsets = [-1, 0, 1, 2]
+  return offsets.map(offset => {
+    const d = new Date(Date.UTC(year, month - 1 + offset, 1))
+    const y = d.getUTCFullYear()
+    const m = d.getUTCMonth() + 1
+    const val = `${y}-${String(m).padStart(2, '0')}`
+    return { value: val, label: `${y}年${m}月` }
+  })
+}
+
+const monthOptions = buildMonthOptions()
+const selectedMonth = ref(shanghaiStamp().slice(0, 7))
+
 const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const shiftRows = computed(() => {
   const names = hasRealAssignees.value && props.assignees.length >= 2
     ? props.assignees.map(a => a.username)
     : ['张三', '李四', '赵六', '陈七']
-  const pick = idx => names[idx % names.length]
+  const monthIdx = Math.max(0, monthOptions.findIndex(m => m.value === selectedMonth.value))
+  const pick = idx => names[(idx + monthIdx) % names.length]
   return [
     {
       name: '早班',
@@ -656,6 +1132,13 @@ const shiftRows = computed(() => {
     }
   ]
 })
+
+const scheduleSummaryText = computed(() => {
+  const activeMonth = monthOptions.find(m => m.value === selectedMonth.value)?.label || selectedMonth.value
+  const earlyCount = shiftRows.value[0]?.members.length || 7
+  const lateCount = shiftRows.value[1]?.members.length || 7
+  return `${activeMonth}排班汇总：早班（09:00-18:00）${earlyCount} 班次 · 晚班（14:00-23:00）${lateCount} 班次 · 交接重合时段 14:00-18:00`
+})
 </script>
 
 <style scoped>
@@ -663,6 +1146,142 @@ const shiftRows = computed(() => {
   display: grid;
   gap: 16px;
   margin-top: 16px;
+}
+
+.dispatch-dashboard.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: auto;
+  background: #f5f7fa;
+  padding: 20px;
+  margin-top: 0;
+}
+
+.dash-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px #132c4906;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.topbar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pine-bright);
+  box-shadow: 0 0 0 3px var(--pine-soft);
+  flex: none;
+}
+
+.topbar-title {
+  margin: 0;
+  color: var(--heading);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mode-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pine-soft);
+  color: var(--pine);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.live-clock {
+  color: var(--heading);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta-sep {
+  color: var(--muted);
+}
+
+.duty-stat {
+  color: var(--pine);
+  font-weight: 600;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.esc-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #cce7e2;
+  border-radius: 8px;
+  background: var(--pine-soft);
+  color: var(--pine);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.fullscreen-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fullscreen-btn:hover {
+  border-color: var(--pine-bright);
+  background: #d7eeeb;
+}
+
+.fullscreen-btn.active {
+  border-color: var(--pine);
+  background: var(--pine);
+  color: #fff;
 }
 
 .kpi-grid {
@@ -768,6 +1387,19 @@ const shiftRows = computed(() => {
   color: var(--danger);
 }
 
+.duty-ratio-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid #cce7e2;
+  border-radius: 999px;
+  background: var(--pine-soft);
+  color: var(--pine);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .mid-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.75fr) minmax(275px, 0.9fr);
@@ -777,7 +1409,7 @@ const shiftRows = computed(() => {
 
 .bottom-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.04fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.02fr) minmax(0, 1.24fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -814,9 +1446,54 @@ const shiftRows = computed(() => {
   font-size: 11px;
 }
 
+.pool-header {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pool-heading {
+  min-width: 150px;
+}
+
+.pool-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.pool-filter-select,
+.pool-filter-input,
+.month-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-size: 11px;
+  outline: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.pool-filter-select:focus,
+.pool-filter-input:focus,
+.month-select:focus {
+  border-color: var(--pine-bright);
+  background: #fff;
+}
+
+.pool-filter-input {
+  width: 150px;
+  min-width: 110px;
+}
+
 .link-btn {
   flex: none;
-  padding: 4px 10px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid #d5ebe5;
   border-radius: 6px;
   background: var(--pine-soft);
@@ -845,11 +1522,11 @@ const shiftRows = computed(() => {
   text-align: left;
 }
 
-.pool-table .col-order { width: 76px; }
-.pool-table .col-channel { width: 80px; }
+.pool-table .col-order { width: 88px; }
+.pool-table .col-channel { width: 82px; }
 .pool-table .col-title { width: auto; }
-.pool-table .col-sla { width: 94px; }
-.pool-table .col-status { width: 88px; }
+.pool-table .col-sla { width: 92px; }
+.pool-table .col-status { width: 86px; }
 .pool-table .col-owner { width: 96px; }
 
 .pool-table th {
@@ -960,7 +1637,9 @@ const shiftRows = computed(() => {
   color: var(--pine);
 }
 
-.kind-tag, .compromise-tag {
+.kind-tag,
+.compromise-tag,
+.priority-tag {
   flex: none;
   padding: 1px 5px;
   border-radius: 4px;
@@ -971,6 +1650,7 @@ const shiftRows = computed(() => {
 .kind-tag.fault { background: #fbefed; color: #ba7d73; }
 .kind-tag.consult { background: #edf5fc; color: #6d9ac4; }
 .kind-tag.service { background: #eaf6f1; color: #5a9f8c; }
+.priority-tag.high { background: #fdecec; color: var(--danger); font-weight: 600; }
 .compromise-tag { background: #fdecec; color: var(--danger); font-weight: 600; }
 
 .sla-text {
@@ -1095,6 +1775,56 @@ const shiftRows = computed(() => {
   font-size: 12px;
 }
 
+.pool-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.pool-total {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.page-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.page-btn:hover:not(:disabled):not(.active) {
+  border-color: var(--pine-bright);
+  color: var(--pine);
+}
+
+.page-btn.active {
+  border-color: var(--pine);
+  background: var(--pine);
+  color: #fff;
+  font-weight: 700;
+}
+
+.page-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 .agent-list {
   list-style: none;
   margin: 0;
@@ -1158,10 +1888,23 @@ const shiftRows = computed(() => {
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 3px 8px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .15s ease, filter .15s ease;
+}
+
+.presence-pill:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: currentColor;
+}
+
+.presence-pill:disabled {
+  opacity: .6;
+  cursor: not-allowed;
 }
 
 .presence-pill i {
@@ -1184,6 +1927,16 @@ const shiftRows = computed(() => {
 .presence-pill.away {
   background: #f1f5f9;
   color: #64748b;
+}
+
+.duty-error {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid #f5c2be;
+  border-radius: 7px;
+  background: #fdecec;
+  color: var(--danger);
+  font-size: 11px;
 }
 
 .agent-footer {
@@ -1225,6 +1978,13 @@ const shiftRows = computed(() => {
   line-height: 1.5;
 }
 
+.channel-header-right,
+.schedule-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .channel-bars {
   list-style: none;
   margin: 4px 0 0;
@@ -1244,6 +2004,17 @@ const shiftRows = computed(() => {
 .channel-name {
   color: var(--ink);
   font-weight: 500;
+}
+
+.channel-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-count {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .channel-pct {
@@ -1285,6 +2056,7 @@ const shiftRows = computed(() => {
   color: #64748b;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .range-switch button[aria-pressed="true"] {
@@ -1419,6 +2191,14 @@ const shiftRows = computed(() => {
   color: var(--ink);
 }
 
+.schedule-summary {
+  margin-top: auto;
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 @media (max-width: 1100px) {
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1426,6 +2206,9 @@ const shiftRows = computed(() => {
   .mid-grid,
   .bottom-grid {
     grid-template-columns: 1fr;
+  }
+  .pool-toolbar {
+    justify-content: flex-start;
   }
 }
 

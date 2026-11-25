@@ -1,5 +1,5 @@
-const CORE_BUCKETS = ['', 'unclaimed', 'open', 'fieldPending', 'fieldActive', 'verify', 'resolved']
-const EXTRA_BUCKETS = ['triage', 'waiting', 'answered', 'referred']
+const CORE_BUCKETS = ['', 'pending_assign', 'processing', 'suspended', 'pending_callback', 'pending_accept', 'closed', 'device_pending']
+const EXTRA_BUCKETS = ['cancelled', 'unclaimed', 'open', 'triage', 'waiting', 'fieldPending', 'fieldActive', 'verify', 'resolved', 'answered', 'referred']
 
 export const BUCKET_LABELS = {
   '': '全部',

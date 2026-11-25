@@ -1,19 +1,18 @@
 <template>
   <section class="dispatch-shell" aria-label="派单至智享乐装">
+    <!-- 1. 顶部步骤条 -->
     <header class="dispatch-top">
       <div class="top-left">
         <button class="back-btn" type="button" @click="$emit('back')">
-          <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path d="M12.5 4.5 7 10l5.5 5.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <span aria-hidden="true">←</span>
           <span>返回工作台</span>
         </button>
         <div class="top-title-group">
           <div class="top-title-row">
             <h2>派单至智享乐装</h2>
-            <span class="badge-soft">双端字段自动带入</span>
+            <span class="badge-soft">V1.1 现场派单</span>
           </div>
-          <p class="top-subtitle">核对受理单信息、补填现场派单字段并关联智享乐装工单回传状态</p>
+          <p class="top-subtitle">核对受理信息、补全派单字段并跟踪智享乐装回传闭环</p>
         </div>
       </div>
 
@@ -22,31 +21,45 @@
           v-for="(step, idx) in dispatchSteps"
           :key="step.id"
           class="step-item"
-          :class="{ done: idx < activeDispatchStep, active: idx === activeDispatchStep }"
+          :class="{ done: isStepDone(idx), active: isStepActive(idx) }"
         >
-          <span class="step-num">{{ idx < activeDispatchStep ? '✓' : idx + 1 }}</span>
+          <span class="step-num">{{ isStepDone(idx) ? '✓' : idx + 1 }}</span>
           <span class="step-text">{{ step.label }}</span>
           <span v-if="idx < dispatchSteps.length - 1" class="step-arrow" aria-hidden="true">→</span>
         </li>
       </ol>
     </header>
 
+    <!-- 主体三栏 -->
     <div class="dispatch-grid">
-      <!-- 左栏：待派工单 -->
+      <!-- 2. 左栏：待派工单 -->
       <article class="card-col">
         <header class="col-head">
           <div>
-            <span class="col-kicker">STEP 1 · 核对信息</span>
+            <span class="col-kicker">STEP 1 · 工单摘要</span>
             <h3>待派工单</h3>
+          </div>
+          <button
+            class="refresh-btn"
+            type="button"
+            :disabled="busy"
+            @click="refreshView"
+          >
+            <span aria-hidden="true">↻</span>
+            <span>刷新</span>
+          </button>
+        </header>
+
+        <p v-if="refreshTip" class="inline-feedback" role="status">{{ refreshTip }}</p>
+
+        <div class="order-banner">
+          <div class="order-banner-main">
+            <span class="order-label">工单编号</span>
+            <strong class="order-code">{{ orderCode }}</strong>
           </div>
           <span class="status-pill" :class="statusInfo.tone">
             <i aria-hidden="true"></i>{{ statusInfo.label }}
           </span>
-        </header>
-
-        <div class="order-banner">
-          <span class="order-label">问题单号</span>
-          <strong class="order-code">{{ orderCode }}</strong>
         </div>
 
         <dl class="info-list">
@@ -60,321 +73,434 @@
           </div>
           <div class="info-row">
             <dt>联系人</dt>
-            <dd>{{ resolvedContact }}</dd>
+            <dd class="contact-cell">
+              <span>{{ resolvedContactName }}</span>
+              <span class="phone-pill">{{ resolvedPhone }}</span>
+            </dd>
           </div>
           <div class="info-row">
-            <dt>桩 SN</dt>
+            <dt>桩SN</dt>
             <dd class="mono">{{ resolvedDeviceCode }}</dd>
+          </div>
+          <div class="info-row">
+            <dt>故障</dt>
+            <dd>
+              <span>{{ problem.title || '未填写故障现象' }}</span>
+              <span v-if="problem.category" class="mini-chip">{{ problem.category }}</span>
+            </dd>
+          </div>
+          <div class="info-row">
+            <dt>提交时间</dt>
+            <dd class="mono">{{ submittedTimeText }}</dd>
           </div>
         </dl>
 
-        <div class="fault-summary">
-          <div class="fault-head">
-            <span>故障标题与描述摘要</span>
-            <span v-if="problem.category" class="mini-chip">{{ problem.category }}</span>
+        <div class="remark-box">
+          <div class="remark-head">
+            <span>备注信息</span>
+            <span v-if="disposalText" class="mini-chip pine">{{ disposalText }}</span>
           </div>
-          <strong class="fault-title">{{ problem.title || '未填写故障标题' }}</strong>
-          <p class="fault-desc">{{ problem.description || '暂无故障现象描述' }}</p>
-          <div v-if="problem.grade || problem.disposalType" class="fault-meta">
-            <span v-if="problem.grade" class="mini-chip pine">{{ problem.grade }} 级证据</span>
-            <span v-if="problem.disposalType" class="mini-chip">{{ disposalText }}</span>
-          </div>
+          <p class="remark-text">{{ problem.description || '暂无故障描述与补充备注' }}</p>
         </div>
       </article>
 
-      <!-- 中栏：自动带入（只读） -->
+      <!-- 3. 中栏：自动带入（只读） ⓘ -->
       <article class="card-col">
         <header class="col-head">
-          <div>
-            <span class="col-kicker">STEP 1 · 只读同步</span>
-            <h3>自动带入（只读）</h3>
+          <div class="head-with-tip">
+            <div>
+              <span class="col-kicker">STEP 1 · 只读同步</span>
+              <h3 class="title-inline">
+                <span>自动带入（只读）</span>
+                <span class="info-mark" title="以下字段由受理建单自动带入，只读锁定不可修改" aria-label="只读说明">ⓘ</span>
+              </h3>
+            </div>
           </div>
-          <span class="lock-badge">
-            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-              <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
-              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-            </svg>
-            已锁定
-          </span>
+          <span class="lock-badge">🔒 已锁定</span>
         </header>
 
         <div class="readonly-stack">
           <div v-for="field in readonlyFields" :key="field.key" class="readonly-field">
-            <div class="readonly-label">
-              <span>{{ field.label }}</span>
-              <span class="field-lock" title="只读锁定">
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                  <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
-                  <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-                </svg>
-                只读
-              </span>
+            <label class="readonly-label" :for="'ro-' + field.key">{{ field.label }}</label>
+            <div class="readonly-box">
+              <input
+                :id="'ro-' + field.key"
+                class="readonly-input"
+                type="text"
+                :value="field.value"
+                readonly
+                tabindex="-1"
+                :aria-label="field.label + '（只读）'"
+              >
+              <span class="box-lock" aria-hidden="true">🔒</span>
             </div>
-            <input class="readonly-input" type="text" :value="field.value" readonly tabindex="-1" :aria-label="field.label + '（只读）'">
           </div>
         </div>
 
         <p class="sync-tip" role="note">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.2" />
-            <path d="M8 7.2v3.6M8 4.9h.01" stroke-linecap="round" />
-          </svg>
-          <span>以上信息由受理建单自动带入，避免两端重复建档</span>
+          <span aria-hidden="true">ⓘ</span>
+          <span>以上信息由受理建单自动带入</span>
         </p>
       </article>
 
-      <!-- 右栏：需补填字段 -->
+      <!-- 4. 右栏：需补填字段 -->
       <article class="card-col">
         <header class="col-head">
           <div>
             <span class="col-kicker">STEP 2 · 补全字段</span>
             <h3>需补填字段</h3>
           </div>
-          <span v-if="activeFieldOrder" class="active-order-tag">已关联 {{ activeFieldOrder.externalNo }}</span>
-          <span v-else-if="!isFieldState" class="preview-tag">预填/预览模式</span>
+          <span class="required-hint"><em class="req">*</em> 请完善以下信息后再提交</span>
         </header>
 
-        <div v-if="!isFieldState" class="state-alert" role="status">
-          <strong>当前工单尚未进入「待现场派单」状态</strong>
-          <p>请先在回访结果选择「待现场派单」后再正式关联；您仍可在此填写字段进行模拟填报预览。</p>
+        <div v-if="isDevicePending" class="state-alert danger" role="alert">
+          <strong>设备信息待补，禁止派单</strong>
+          <p>请先返回工作台补齐设备桩 SN 档案后，再执行派单至智享乐装。</p>
         </div>
-        <div v-else-if="activeFieldOrder" class="state-alert info" role="status">
-          <strong>已关联智享乐装现场单：{{ activeFieldOrder.externalNo }}</strong>
-          <p>当前现场单处于「{{ fieldStateLabel(activeFieldOrder.state) }}」状态，请在下方回传进度区登记最新现场回执。</p>
+        <div v-else-if="latestV11Order" class="state-alert info" role="status">
+          <strong>已派单至智享乐装（单号：{{ latestV11Order.externalNo }}）</strong>
+          <p>工单当前状态为「{{ fieldStateLabel(latestV11Order.state) }}」，可在下方回传状态区模拟推进。</p>
+        </div>
+        <div v-else-if="needsClaimBeforeDispatch" class="state-alert" role="status">
+          <strong>当前工单处于「待分配」状态</strong>
+          <p>请先返回工作台点击「承接处理」进入处理中，再确认派单。</p>
         </div>
 
-        <form class="dispatch-form" @submit.prevent="handleSubmitDispatch">
-          <div class="bool-grid">
-            <div class="form-group">
-              <span class="form-label">是否索赔</span>
-              <div class="choice-pills" role="radiogroup" aria-label="是否索赔">
-                <button
-                  type="button"
-                  class="choice-pill"
-                  :class="{ selected: form.isClaim === '是' }"
-                  :aria-pressed="form.isClaim === '是'"
-                  @click="form.isClaim = '是'"
-                >是</button>
-                <button
-                  type="button"
-                  class="choice-pill"
-                  :class="{ selected: form.isClaim === '否' }"
-                  :aria-pressed="form.isClaim === '否'"
-                  @click="form.isClaim = '否'"
-                >否</button>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <span class="form-label">桩是否返厂</span>
-              <div class="choice-pills" role="radiogroup" aria-label="桩是否返厂">
-                <button
-                  type="button"
-                  class="choice-pill"
-                  :class="{ selected: form.returnToFactory === '是' }"
-                  :aria-pressed="form.returnToFactory === '是'"
-                  @click="form.returnToFactory = '是'"
-                >是</button>
-                <button
-                  type="button"
-                  class="choice-pill"
-                  :class="{ selected: form.returnToFactory === '否' }"
-                  :aria-pressed="form.returnToFactory === '否'"
-                  @click="form.returnToFactory = '否'"
-                >否</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="two-col-inputs">
-            <div class="form-group">
-              <label class="form-label" for="dispatch-project-code">项目编号</label>
-              <input
-                id="dispatch-project-code"
-                v-model="form.projectCode"
-                class="field-input"
-                type="text"
-                maxlength="64"
-                placeholder="如：PRJ-2026-AH01"
-              >
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="dispatch-visit-time">预约上门时间</label>
-              <input
-                id="dispatch-visit-time"
-                v-model="form.appointmentAt"
-                class="field-input"
-                type="datetime-local"
-              >
-            </div>
+        <form id="dispatch-v11-form" class="dispatch-form" @submit.prevent="handleDispatchSubmit">
+          <div class="form-group">
+            <label class="form-label" for="dispatch-is-claim">
+              是否索赔 <em class="req">*</em>
+            </label>
+            <select
+              id="dispatch-is-claim"
+              v-model="form.isClaim"
+              class="field-input"
+              :disabled="fieldsLocked"
+            >
+              <option value="">请选择</option>
+              <option value="yes">是</option>
+              <option value="no">否</option>
+            </select>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="dispatch-external-no">
-              智享乐装工单号 <em class="req">*</em>
+            <label class="form-label" for="dispatch-return-factory">
+              桩是否返厂 <em class="req">*</em>
+            </label>
+            <select
+              id="dispatch-return-factory"
+              v-model="form.returnToFactory"
+              class="field-input"
+              :disabled="fieldsLocked"
+            >
+              <option value="">请选择</option>
+              <option value="yes">是</option>
+              <option value="no">否</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="dispatch-project-code">
+              项目编号 <em class="req">*</em>
             </label>
             <input
-              id="dispatch-external-no"
-              v-model="form.externalNo"
+              id="dispatch-project-code"
+              v-model="form.projectCode"
               class="field-input"
               type="text"
               maxlength="64"
-              :disabled="Boolean(activeFieldOrder)"
-              placeholder="输入智享乐装工单号，如 ZXLZ-20261125-001"
+              :disabled="fieldsLocked"
+              placeholder="默认带入设备项目编号，如 PRJ-2026-AH01"
             >
           </div>
 
-          <!-- 换装照片与旧件上传区 -->
+          <div class="form-group">
+            <label class="form-label" for="dispatch-visit-time">
+              预约上门时间 <em class="req">*</em>
+            </label>
+            <input
+              id="dispatch-visit-time"
+              v-model="form.appointmentAt"
+              class="field-input"
+              type="datetime-local"
+              :disabled="fieldsLocked"
+            >
+          </div>
+
+          <!-- 换装照片与旧件 -->
           <div class="upload-section">
             <div class="upload-head">
-              <span class="form-label">换装照片与旧件上传区</span>
-              <label class="upload-trigger" for="dispatch-file-input">
-                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                  <path d="M8 10.5V3M5.2 5.5 8 2.7l2.8 2.8M2.5 11.5v1.3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.3" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <span>选择文件</span>
-              </label>
-              <input
-                id="dispatch-file-input"
-                ref="fileInputRef"
-                class="sr-only"
-                type="file"
-                multiple
-                @change="onFilesSelected"
-              >
+              <span class="form-label">换装照片与旧件</span>
+              <span class="upload-count">{{ uploadedFiles.length }}/3</span>
+            </div>
+            <p class="upload-hint">支持jpg/png/pdf，单个文件不超过10MB，最多上传3张</p>
+
+            <input
+              id="dispatch-file-input"
+              ref="fileInputRef"
+              class="sr-only"
+              type="file"
+              accept=".jpg,.jpeg,.png,.pdf"
+              multiple
+              :disabled="fieldsLocked || uploadedFiles.length >= 3"
+              @change="onFilesSelected"
+            >
+
+            <div
+              class="dropzone"
+              :class="{ dragging: isDragging, disabled: fieldsLocked || uploadedFiles.length >= 3 }"
+              role="button"
+              tabindex="0"
+              @click="triggerFilePicker"
+              @keydown.enter.prevent="triggerFilePicker"
+              @keydown.space.prevent="triggerFilePicker"
+              @dragover.prevent="onDragOver"
+              @dragleave.prevent="isDragging = false"
+              @drop.prevent="onDropFiles"
+            >
+              <span class="drop-icon" aria-hidden="true">⬆</span>
+              <span class="drop-text">
+                {{ uploadedFiles.length >= 3 ? '已达到最多 3 张上传上限' : '点击或拖拽文件到此处上传' }}
+              </span>
             </div>
 
-            <div v-if="uploadedFiles.length" class="file-grid">
+            <p v-if="uploadError" class="form-error" role="alert">{{ uploadError }}</p>
+
+            <div class="file-grid">
               <div v-for="(file, idx) in uploadedFiles" :key="file.id" class="file-card">
                 <div class="file-card-top">
-                  <span class="file-tag">已选择</span>
-                  <button class="remove-file" type="button" aria-label="移除文件" @click="removeFile(idx)">×</button>
+                  <span class="file-tag">{{ file.extLabel }}</span>
+                  <button
+                    v-if="!fieldsLocked"
+                    class="remove-file"
+                    type="button"
+                    aria-label="移除文件"
+                    @click="removeFile(idx)"
+                  >×</button>
                 </div>
                 <strong class="file-name" :title="file.name">{{ file.name }}</strong>
-                <small class="file-meta">{{ file.sizeText }} · 待同步至乐装</small>
+                <small class="file-meta">{{ file.sizeText }}</small>
               </div>
-            </div>
 
-            <div v-else class="file-grid">
-              <div class="file-card placeholder">
-                <span class="file-tag muted">模拟占位</span>
-                <strong class="file-name">换装照片.jpg</strong>
-                <small class="file-meta">新桩/换件安装位照片</small>
-              </div>
-              <div class="file-card placeholder">
-                <span class="file-tag muted">模拟占位</span>
-                <strong class="file-name">旧件照片.jpg</strong>
-                <small class="file-meta">拆下旧件铭牌与外观照</small>
-              </div>
+              <button
+                v-if="!fieldsLocked && uploadedFiles.length < 3"
+                type="button"
+                class="file-slot-btn"
+                @click="triggerFilePicker"
+              >
+                + 上传第{{ nextUploadSlotIndex }}张
+              </button>
             </div>
           </div>
 
-          <div class="form-actions">
-            <button
-              v-if="canLinkDirectly"
-              class="btn-primary"
-              type="submit"
-              :disabled="busy || !canProcess || !form.externalNo.trim()"
-            >
-              {{ busy ? '提交关联中…' : '确认派单并关联' }}
-            </button>
-            <button
-              v-else-if="!isFieldState"
-              class="btn-secondary"
-              type="button"
-              :disabled="busy"
-              @click="showPreview = !showPreview"
-            >
-              {{ showPreview ? '收起模拟填报预览' : '模拟填报预览' }}
-            </button>
-            <span v-if="canLinkDirectly && !canProcess" class="perm-tip">当前账号无处理权限，请先认领或联系负责人</span>
-          </div>
-
-          <div v-if="showPreview && !isFieldState" class="preview-box" role="region" aria-label="模拟填报预览">
-            <strong>模拟填报预览（尚未写入智享乐装）</strong>
-            <p>
-              问题单 {{ orderCode }} · 索赔：{{ form.isClaim }} · 返厂：{{ form.returnToFactory }}
-              <span v-if="form.projectCode"> · 项目：{{ form.projectCode }}</span>
-              <span v-if="form.appointmentAt"> · 预约：{{ formatStamp(form.appointmentAt) }}</span>
-              <span v-if="form.externalNo.trim()"> · 乐装单号：{{ form.externalNo.trim() }}</span>
-              <span> · 附件：{{ uploadedFiles.length ? uploadedFiles.map(f => f.name).join('、') : '换装照片.jpg、旧件照片.jpg（占位）' }}</span>
-            </p>
-          </div>
+          <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         </form>
       </article>
     </div>
 
-    <!-- 底部区域：回传状态 4 节点进度条 & 快捷回执 -->
-    <section class="card-bottom" aria-label="现场回传进度与快捷回执">
-      <div class="bottom-head">
-        <div>
-          <h3>智享乐装回传状态</h3>
-          <p class="bottom-sub">
-            <template v-if="latestFieldOrder">
-              当前跟踪现场单 <strong>{{ latestFieldOrder.externalNo }}</strong>（{{ fieldStateLabel(latestFieldOrder.state) }}）
-              <span v-if="latestFieldOrder.receipt"> · 回执：{{ latestFieldOrder.receipt }}</span>
-            </template>
-            <template v-else>尚未关联智享乐装现场单，关联后将在此同步 4 节点执行进度</template>
-          </p>
-        </div>
-        <span v-if="latestFieldOrder && isClosedFieldState(latestFieldOrder.state)" class="closed-pill">
-          {{ fieldStateLabel(latestFieldOrder.state) }}
-        </span>
-      </div>
-
-      <ol class="callback-track" aria-label="现场回传4节点进度">
-        <li
-          v-for="(node, idx) in callbackNodes"
-          :key="node.id"
-          class="track-node"
-          :class="nodeStatusClass(idx)"
-        >
-          <div class="node-line-wrap">
-            <span class="node-dot">{{ nodeIsDone(idx) ? '✓' : idx + 1 }}</span>
-            <span v-if="idx < callbackNodes.length - 1" class="node-connector" :class="{ filled: nodeIsDone(idx) }"></span>
+    <!-- 5. 底部左右分栏 -->
+    <div class="bottom-split">
+      <!-- 底部左卡：3 个操作按钮 -->
+      <section class="card-bottom left-action-card" aria-label="派单操作">
+        <header class="bottom-card-head">
+          <div>
+            <h3>STEP 3 · 确认与流转</h3>
+            <p class="bottom-sub">核对补填字段后确认派单，系统将自动生成智享乐装工单号</p>
           </div>
-          <div class="node-copy">
-            <strong>{{ node.label }}</strong>
-            <small>{{ node.hint }}</small>
-          </div>
-        </li>
-      </ol>
+        </header>
 
-      <div v-if="activeFieldOrder && canProcess" class="quick-receipt-bar">
-        <div class="receipt-bar-head">
-          <strong>快捷登记回执</strong>
-          <span class="muted-note">现场单 {{ activeFieldOrder.externalNo }} 进行中，可直接同步智享乐装人工回执</span>
-        </div>
-        <form class="receipt-form" @submit.prevent="handleSubmitReceipt">
-          <select v-model="receiptForm.state" class="field-input receipt-select" aria-label="现场单回传状态">
-            <option value="in_progress" :disabled="activeFieldOrder.state === 'in_progress'">已上门（处理中）</option>
-            <option value="complete">完工回传（进入待验收）</option>
-            <option value="rejected">拒单</option>
-            <option value="cancelled">取消</option>
-          </select>
-          <input
-            v-model="receiptForm.receipt"
-            class="field-input receipt-input"
-            type="text"
-            maxlength="700"
-            placeholder="填写现场处理结果、更换备件或拒单/取消原因"
-          >
+        <div class="left-btn-group">
+          <button
+            class="btn-secondary"
+            type="button"
+            :disabled="busy"
+            @click="onAuxAction('followup')"
+          >创建跟进任务</button>
+
+          <button
+            class="btn-secondary"
+            type="button"
+            :disabled="busy"
+            @click="onAuxAction('engineer')"
+          >转工程师</button>
+
           <button
             class="btn-primary"
             type="submit"
-            :disabled="busy || !receiptForm.receipt.trim() || receiptForm.state === activeFieldOrder.state"
+            form="dispatch-v11-form"
+            :disabled="confirmDisabled"
           >
-            {{ busy ? '保存中…' : '保存现场回执' }}
+            {{ busy ? '派单提交中…' : (latestV11Order ? '已派单至乐装' : '确认派单') }}
           </button>
-        </form>
-      </div>
-    </section>
+        </div>
+
+        <p v-if="isDevicePending" class="block-tip" role="alert">
+          设备信息待补，禁止派单（请先返回工作台补齐桩 SN）
+        </p>
+        <p v-else-if="!canProcess" class="perm-tip">
+          当前账号无处理权限，仅可查看派单详情
+        </p>
+        <p v-else-if="auxTip" class="aux-tip" role="status">
+          {{ auxTip }}
+        </p>
+      </section>
+
+      <!-- 底部右卡：回传状态 & 模拟智享乐装回传触发器 -->
+      <section class="card-bottom" aria-label="智享乐装回传状态">
+        <header class="bottom-head">
+          <div>
+            <h3>回传状态</h3>
+            <p class="bottom-sub">
+              <template v-if="latestOrder">
+                乐装单号 <strong class="mono">{{ latestOrder.externalNo }}</strong>
+                <span class="state-chip">{{ fieldStateLabel(latestOrder.state) }}</span>
+                <span v-if="latestOrder.receipt"> · {{ latestOrder.receipt }}</span>
+              </template>
+              <template v-else>尚未派单，确认派单后将在此实时跟踪 4 节点回传进度</template>
+            </p>
+          </div>
+          <span v-if="latestOrder && isTerminalFieldState(latestOrder.state)" class="closed-pill">
+            {{ fieldStateLabel(latestOrder.state) }}
+          </span>
+        </header>
+
+        <!-- 回退异常留痕醒目展示 -->
+        <div v-if="latestOrder?.rollbackAnomalyNote" class="anomaly-alert" role="alert">
+          <strong>回传异常留痕</strong>
+          <p>{{ latestOrder.rollbackAnomalyNote }}</p>
+        </div>
+
+        <!-- 4 节点进度条：已接单 / 已上门 / 完工回传 / 待验收 -->
+        <ol class="callback-track" aria-label="现场回传4节点进度">
+          <li
+            v-for="(node, idx) in callbackNodes"
+            :key="node.id"
+            class="track-node"
+            :class="nodeStatusClass(idx)"
+          >
+            <div class="node-line-wrap">
+              <span class="node-dot">{{ nodeIsDone(idx) ? '✓' : idx + 1 }}</span>
+              <span v-if="idx < callbackNodes.length - 1" class="node-connector" :class="{ filled: nodeIsDone(idx) }"></span>
+            </div>
+            <div class="node-copy">
+              <strong>{{ node.label }}</strong>
+              <small class="node-time">{{ node.timeText }}</small>
+            </div>
+          </li>
+        </ol>
+
+        <!-- 完工回传结构化详情摘要 -->
+        <div
+          v-if="latestOrder && (latestOrder.replacedParts || latestOrder.oldPartNo || latestOrder.customerAcceptResult || latestOrder.feeOwner)"
+          class="callback-summary"
+        >
+          <span v-if="latestOrder.replacedParts">更换件：<strong>{{ latestOrder.replacedParts }}</strong></span>
+          <span v-if="latestOrder.oldPartNo">旧件编号：<strong class="mono">{{ latestOrder.oldPartNo }}</strong></span>
+          <span v-if="latestOrder.customerAcceptResult">验收结果：<strong>{{ latestOrder.customerAcceptResult }}</strong></span>
+          <span v-if="latestOrder.feeOwner">费用归属：<strong>{{ latestOrder.feeOwner }}</strong></span>
+        </div>
+
+        <!-- 模拟智享乐装回传触发器（V1.1 已派单且有权限） -->
+        <div v-if="latestV11Order && canProcess && !isProblemTerminal" class="sim-callback-box">
+          <div class="sim-head">
+            <strong>模拟智享乐装回传触发器</strong>
+            <span class="muted-note">一键模拟乐装事件回传，跑通「待回传 → 待验收」闭环</span>
+          </div>
+
+          <div class="sim-btn-row">
+            <button
+              class="sim-btn"
+              type="button"
+              :disabled="busy"
+              @click="triggerSimCallback('accepted')"
+            >已接单 accepted</button>
+            <button
+              class="sim-btn"
+              type="button"
+              :disabled="busy"
+              @click="triggerSimCallback('arrived')"
+            >已上门 arrived</button>
+            <button
+              class="sim-btn primary"
+              type="button"
+              :disabled="busy"
+              @click="triggerSimCallback('completed')"
+            >完工回传 completed</button>
+          </div>
+
+          <div class="sim-fields-grid">
+            <label class="sim-field">
+              <span>更换件</span>
+              <input v-model="simForm.replacedParts" class="field-input compact" type="text" placeholder="如：交流接触器">
+            </label>
+            <label class="sim-field">
+              <span>旧件编号</span>
+              <input v-model="simForm.oldPartNo" class="field-input compact" type="text" placeholder="如：OP-20261125-01">
+            </label>
+            <label class="sim-field">
+              <span>验收结果</span>
+              <select v-model="simForm.customerAcceptResult" class="field-input compact">
+                <option value="客户现场验收通过">客户现场验收通过</option>
+                <option value="客户签字确认恢复">客户签字确认恢复</option>
+                <option value="待二次复测">待二次复测</option>
+              </select>
+            </label>
+            <label class="sim-field">
+              <span>费用归属</span>
+              <select v-model="simForm.feeOwner" class="field-input compact">
+                <option value="厂家质保">厂家质保</option>
+                <option value="客户自费">客户自费</option>
+                <option value="服务商承担">服务商承担</option>
+              </select>
+            </label>
+          </div>
+          <label class="sim-field full">
+            <span>回执说明（可选）</span>
+            <input
+              v-model="simForm.receipt"
+              class="field-input compact"
+              type="text"
+              maxlength="300"
+              placeholder="可选填写现场回执备注，不填则使用对应节点默认回执"
+            >
+          </label>
+        </div>
+
+        <!-- 兼容旧版现场单手工回执 -->
+        <div v-else-if="legacyActiveOrder && canProcess" class="sim-callback-box">
+          <div class="sim-head">
+            <strong>快捷登记现场回执</strong>
+            <span class="muted-note">现场单 {{ legacyActiveOrder.externalNo }} 进行中</span>
+          </div>
+          <form class="legacy-receipt-form" @submit.prevent="handleLegacyReceipt">
+            <select v-model="legacyReceipt.state" class="field-input compact">
+              <option value="in_progress" :disabled="legacyActiveOrder.state === 'in_progress'">已上门（处理中）</option>
+              <option value="complete">完工回传</option>
+              <option value="rejected">拒单</option>
+              <option value="cancelled">取消</option>
+            </select>
+            <input
+              v-model="legacyReceipt.receipt"
+              class="field-input compact"
+              type="text"
+              maxlength="700"
+              placeholder="填写现场处理结果或原因"
+            >
+            <button
+              class="btn-primary compact-btn"
+              type="submit"
+              :disabled="busy || !legacyReceipt.receipt.trim() || legacyReceipt.state === legacyActiveOrder.state"
+            >保存回执</button>
+          </form>
+        </div>
+      </section>
+    </div>
   </section>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { displayStatus, disposalLabel, orderNumber } from '../status'
+import { dateLabel, displayStatus, disposalLabel, orderNumber } from '../status'
 
 const props = defineProps({
   problem: { type: Object, required: true },
@@ -383,7 +509,7 @@ const props = defineProps({
   canProcess: Boolean
 })
 
-const emit = defineEmits(['link', 'field-result', 'back'])
+const emit = defineEmits(['link', 'field-result', 'dispatch-v11', 'lz-callback', 'back'])
 
 const dispatchSteps = [
   { id: 'check', label: '核对信息' },
@@ -391,14 +517,11 @@ const dispatchSteps = [
   { id: 'confirm', label: '确认派单' }
 ]
 
-const callbackNodes = [
-  { id: 'accepted', label: '已接单', hint: '现场单已关联并派发' },
-  { id: 'onsite', label: '已上门', hint: '工程师到达现场排查' },
-  { id: 'completed', label: '完工回传', hint: '维修完工并回传记录' },
-  { id: 'verify', label: '待验收', hint: '回访车主确认恢复' }
-]
-
 const fieldStateTextMap = {
+  dispatched: '已派单（待接单）',
+  accepted: '已接单',
+  arrived: '已上门',
+  completed: '完工回传',
   linked: '已接单（已关联）',
   in_progress: '已上门（处理中）',
   complete: '完工回传',
@@ -406,85 +529,190 @@ const fieldStateTextMap = {
   cancelled: '已取消'
 }
 
+const V11_ORDER_STATES = ['dispatched', 'accepted', 'arrived', 'completed']
+const MAX_FILES = 3
+const MAX_FILE_BYTES = 10 * 1024 * 1024
+const ALLOWED_EXT = /\.(jpe?g|png|pdf)$/i
+
 const form = reactive({
-  isClaim: '否',
-  returnToFactory: '否',
+  isClaim: '',
+  returnToFactory: '',
   projectCode: '',
-  appointmentAt: '',
-  externalNo: ''
+  appointmentAt: ''
 })
 
-const receiptForm = reactive({
+const simForm = reactive({
+  replacedParts: '交流接触器模块',
+  oldPartNo: 'OP-20261125-01',
+  customerAcceptResult: '客户现场验收通过',
+  feeOwner: '厂家质保',
+  receipt: ''
+})
+
+const legacyReceipt = reactive({
   state: 'complete',
   receipt: ''
 })
 
 const fileInputRef = ref(null)
 const uploadedFiles = ref([])
-const showPreview = ref(false)
+const isDragging = ref(false)
+const uploadError = ref('')
+const formError = ref('')
+const refreshTip = ref('')
+const auxTip = ref('')
+const projectTouched = ref(false)
+
+const snapshot = computed(() => {
+  const raw = props.problem?.snapshotJson
+  if (!raw) return null
+  if (typeof raw === 'object') return raw
+  try {
+    return JSON.parse(raw)
+  } catch (ignore) {
+    return null
+  }
+})
+
+const isDevicePending = computed(() =>
+  Number(props.problem?.devicePending || 0) === 1 || props.problem?.devicePending === true
+)
+
+const isProblemTerminal = computed(() =>
+  ['closed', 'cancelled', 'resolved'].includes(props.problem?.state)
+)
 
 const orderCode = computed(() => orderNumber(props.problem) || '未生成')
 const statusInfo = computed(() => displayStatus(props.problem))
-const disposalText = computed(() => disposalLabel(props.problem.disposalType) || props.problem.disposalType || '')
+const disposalText = computed(() => disposalLabel(props.problem?.disposalType) || '')
 
 const resolvedCustomer = computed(() =>
-  props.device?.customerName || props.problem?.customerName || '李先生（模拟）'
+  props.device?.customerName || snapshot.value?.customerName || props.problem?.customerName || '合肥滨湖示例充电站（模拟）'
 )
 const resolvedAddress = computed(() =>
-  props.device?.siteAddress || props.problem?.siteAddress || '合肥市滨湖新区示例小区 3 栋地下车库（模拟）'
+  props.device?.siteAddress || snapshot.value?.siteAddress || props.problem?.siteAddress || '合肥市滨湖新区示例小区 3 栋地下车库（模拟）'
 )
-const resolvedContact = computed(() =>
-  props.device?.customerPhone || props.device?.contactPhone || props.problem?.contactPhone || '19900000001'
+const resolvedContactName = computed(() =>
+  props.device?.contactName || snapshot.value?.contactName || props.problem?.contactName || '王经理'
+)
+const resolvedPhone = computed(() =>
+  props.device?.customerPhone || props.device?.contactPhone || snapshot.value?.customerPhone || props.problem?.contactPhone || '19900000001'
 )
 const resolvedDeviceCode = computed(() =>
-  props.problem?.device || props.device?.device || '未关联'
+  props.problem?.device || props.device?.device || snapshot.value?.device || (isDevicePending.value ? '设备信息待补' : '未关联')
 )
 const resolvedProject = computed(() =>
-  props.device?.projectName || props.problem?.projectName || '合肥滨湖示范站运维项目（模拟）'
+  props.device?.projectName || snapshot.value?.projectName || props.problem?.projectName || '合肥滨湖示范站运维项目（模拟）'
 )
+const defaultProjectCode = computed(() =>
+  props.device?.projectCode || snapshot.value?.projectCode || ''
+)
+
+const submittedTimeText = computed(() => {
+  const stamp = props.problem?.createdAt || props.problem?.faultOccurredAt
+  return stamp ? dateLabel(stamp) : '刚刚'
+})
 
 const readonlyFields = computed(() => [
   { key: 'customer', label: '客户名称', value: resolvedCustomer.value },
   { key: 'address', label: '安装地址', value: resolvedAddress.value },
   { key: 'device', label: '桩编码', value: resolvedDeviceCode.value },
-  { key: 'phone', label: '联系电话', value: resolvedContact.value },
+  { key: 'phone', label: '联系电话', value: resolvedPhone.value },
   { key: 'project', label: '所属项目', value: resolvedProject.value }
 ])
 
-const isFieldState = computed(() => props.problem?.state === 'field')
-
-const activeFieldOrder = computed(() =>
-  (props.problem?.fieldOrders || []).find(item => item && (item.state === 'linked' || item.state === 'in_progress')) || null
+const fieldOrdersList = computed(() =>
+  Array.isArray(props.problem?.fieldOrders) ? props.problem.fieldOrders : []
 )
 
-const latestFieldOrder = computed(() => {
-  if (activeFieldOrder.value) return activeFieldOrder.value
-  const list = props.problem?.fieldOrders || []
-  if (!list.length) return null
-  const completed = [...list].reverse().find(item => item && item.state === 'complete')
-  return completed || list[list.length - 1]
+const latestV11Order = computed(() =>
+  fieldOrdersList.value.find(item => item && V11_ORDER_STATES.includes(item.state)) || null
+)
+
+const legacyActiveOrder = computed(() =>
+  fieldOrdersList.value.find(item => item && (item.state === 'linked' || item.state === 'in_progress')) || null
+)
+
+const latestOrder = computed(() =>
+  latestV11Order.value || legacyActiveOrder.value || fieldOrdersList.value[0] || null
+)
+
+const hasDispatched = computed(() =>
+  Boolean(latestV11Order.value || ['pending_callback', 'pending_accept', 'closed'].includes(props.problem?.state))
+)
+
+const needsClaimBeforeDispatch = computed(() =>
+  props.problem?.state === 'pending_assign'
+)
+
+const fieldsLocked = computed(() =>
+  Boolean(latestV11Order.value) || isDevicePending.value || isProblemTerminal.value
+)
+
+const confirmDisabled = computed(() =>
+  props.busy ||
+  !props.canProcess ||
+  isDevicePending.value ||
+  needsClaimBeforeDispatch.value ||
+  hasDispatched.value ||
+  isProblemTerminal.value
+)
+
+const isFormComplete = computed(() =>
+  Boolean(form.isClaim && form.returnToFactory && form.projectCode.trim() && form.appointmentAt)
+)
+
+// 顶部步骤条高亮：0=核对信息, 1=补全字段, 2=确认派单
+const activeStepIndex = computed(() => {
+  if (hasDispatched.value) return 2
+  if (isFormComplete.value && !isDevicePending.value) return 2
+  return 1
 })
 
-const canLinkDirectly = computed(() => isFieldState.value && !activeFieldOrder.value)
+function isStepDone(idx) {
+  if (hasDispatched.value) return idx < 2 || (idx === 2 && ['pending_accept', 'closed'].includes(props.problem?.state))
+  return idx < activeStepIndex.value
+}
 
-const activeDispatchStep = computed(() => {
-  if (activeFieldOrder.value || latestFieldOrder.value?.state === 'complete') return 2
-  if (form.externalNo.trim() && form.projectCode.trim()) return 2
-  if (isFieldState.value || form.projectCode.trim() || form.appointmentAt || form.externalNo.trim()) return 1
-  return 0
+function isStepActive(idx) {
+  if (hasDispatched.value && ['pending_accept', 'closed'].includes(props.problem?.state)) return false
+  return idx === activeStepIndex.value
+}
+
+const nextUploadSlotIndex = computed(() =>
+  Math.min(MAX_FILES, uploadedFiles.value.length + 1)
+)
+
+// 4 节点进度：已接单 / 已上门 / 完工回传 / 待验收
+const callbackNodes = computed(() => {
+  const order = latestOrder.value
+  const acceptTime = order?.acceptedAt
+    ? dateLabel(order.acceptedAt)
+    : (order?.state === 'dispatched' ? '待乐装接单' : '--')
+  const arriveTime = order?.arrivedAt ? dateLabel(order.arrivedAt) : '--'
+  const completeTime = order?.completedAt ? dateLabel(order.completedAt) : '--'
+  const verifyTime = (props.problem?.state === 'closed' || props.problem?.state === 'resolved')
+    ? '已验收闭环'
+    : (order?.state === 'completed' || order?.state === 'complete' || props.problem?.state === 'pending_accept' ? '待客服验收' : '--')
+
+  return [
+    { id: 'accepted', label: '已接单', timeText: acceptTime },
+    { id: 'arrived', label: '已上门', timeText: arriveTime },
+    { id: 'completed', label: '完工回传', timeText: completeTime },
+    { id: 'verify', label: '待验收', timeText: verifyTime }
+  ]
 })
 
-// 4 节点进度映射：
-// linked -> 节点 1（idx 0 已完成/当前）
-// in_progress -> 节点 2（idx 0 完成, idx 1 当前）
-// complete -> 节点 3/4（idx 0,1,2 完成, idx 3 待验收当前；若主单已 resolved 则全部完成）
 const callbackStage = computed(() => {
-  const order = latestFieldOrder.value
+  const order = latestOrder.value
   if (!order) return { completedUpTo: -1, currentIdx: -1 }
-  if (order.state === 'linked') return { completedUpTo: 0, currentIdx: 0 }
-  if (order.state === 'in_progress') return { completedUpTo: 0, currentIdx: 1 }
-  if (order.state === 'complete') {
-    if (props.problem?.state === 'resolved') return { completedUpTo: 3, currentIdx: -1 }
+  if (order.state === 'dispatched') return { completedUpTo: -1, currentIdx: 0 }
+  if (order.state === 'accepted' || order.state === 'linked') return { completedUpTo: 0, currentIdx: 1 }
+  if (order.state === 'arrived' || order.state === 'in_progress') return { completedUpTo: 1, currentIdx: 2 }
+  if (order.state === 'completed' || order.state === 'complete') {
+    if (props.problem?.state === 'closed' || props.problem?.state === 'resolved') {
+      return { completedUpTo: 3, currentIdx: -1 }
+    }
     return { completedUpTo: 2, currentIdx: 3 }
   }
   return { completedUpTo: -1, currentIdx: -1 }
@@ -506,73 +734,219 @@ function fieldStateLabel(state) {
   return fieldStateTextMap[state] || state || '未知'
 }
 
-function isClosedFieldState(state) {
+function isTerminalFieldState(state) {
   return state === 'rejected' || state === 'cancelled'
 }
 
 function formatSize(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  if (!Number.isFinite(bytes) || bytes <= 0) return '已同步'
   if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-function formatStamp(value) {
-  return String(value || '').replace('T', ' ').slice(0, 16)
+function fileExtLabel(name) {
+  const ext = String(name || '').split('.').pop().toUpperCase()
+  return ext || '文件'
+}
+
+function triggerFilePicker() {
+  if (fieldsLocked.value || uploadedFiles.value.length >= MAX_FILES) return
+  fileInputRef.value?.click()
+}
+
+function appendFiles(fileList) {
+  uploadError.value = ''
+  const files = Array.from(fileList || [])
+  if (!files.length) return
+  for (const file of files) {
+    if (uploadedFiles.value.length >= MAX_FILES) {
+      uploadError.value = '最多上传 3 张文件'
+      break
+    }
+    if (!ALLOWED_EXT.test(file.name)) {
+      uploadError.value = `文件「${file.name}」格式不支持，仅支持 jpg/png/pdf`
+      continue
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      uploadError.value = `文件「${file.name}」超过 10MB 限制`
+      continue
+    }
+    uploadedFiles.value.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${file.name}`,
+      name: file.name,
+      sizeText: formatSize(file.size),
+      extLabel: fileExtLabel(file.name)
+    })
+  }
 }
 
 function onFilesSelected(event) {
-  const files = Array.from(event.target?.files || [])
-  if (!files.length) return
-  const next = files.map((file, index) => ({
-    id: `${Date.now()}-${index}-${file.name}`,
-    name: file.name,
-    sizeText: formatSize(file.size)
-  }))
-  uploadedFiles.value = uploadedFiles.value.concat(next)
+  appendFiles(event.target?.files)
   if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+function onDragOver() {
+  if (!fieldsLocked.value && uploadedFiles.value.length < MAX_FILES) {
+    isDragging.value = true
+  }
+}
+
+function onDropFiles(event) {
+  isDragging.value = false
+  if (fieldsLocked.value || uploadedFiles.value.length >= MAX_FILES) return
+  appendFiles(event.dataTransfer?.files)
 }
 
 function removeFile(idx) {
   uploadedFiles.value.splice(idx, 1)
+  uploadError.value = ''
 }
 
-function handleSubmitDispatch() {
-  const externalNo = form.externalNo.trim()
-  if (!canLinkDirectly.value || !props.canProcess || props.busy || !externalNo) return
-  emit('link', externalNo)
+function toDatetimeLocalValue(val) {
+  if (!val) return ''
+  const norm = String(val).trim().replace(' ', 'T')
+  return norm.slice(0, 16)
 }
 
-function handleSubmitReceipt() {
-  const receipt = receiptForm.receipt.trim()
-  if (!activeFieldOrder.value || !props.canProcess || props.busy || !receipt) return
-  if (receiptForm.state === activeFieldOrder.value.state) return
+function syncFromProps() {
+  formError.value = ''
+  uploadError.value = ''
+  auxTip.value = ''
+  const order = latestV11Order.value
+  if (order) {
+    form.isClaim = Number(order.isClaim) === 1 || order.isClaim === true ? 'yes' : 'no'
+    form.returnToFactory = Number(order.returnToFactory) === 1 || order.returnToFactory === true ? 'yes' : 'no'
+    form.projectCode = order.projectCode || defaultProjectCode.value || ''
+    form.appointmentAt = toDatetimeLocalValue(order.appointmentAt)
+    const names = String(order.photoNames || '').split(',').map(s => s.trim()).filter(Boolean)
+    uploadedFiles.value = names.slice(0, MAX_FILES).map((name, idx) => ({
+      id: `saved-${idx}-${name}`,
+      name,
+      sizeText: '已随单同步',
+      extLabel: fileExtLabel(name)
+    }))
+  } else {
+    if (!projectTouched.value || !form.projectCode) {
+      form.projectCode = defaultProjectCode.value || ''
+    }
+  }
+}
+
+function refreshView() {
+  syncFromProps()
+  const now = new Date()
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  refreshTip.value = `已同步最新工单与设备字段（${hh}:${mm}:${ss}）`
+}
+
+function onAuxAction(type) {
+  if (type === 'followup') {
+    auxTip.value = '请点击左上角「← 返回工作台」，在「保存工单 / 远程指导」中创建跟进任务。'
+  } else {
+    auxTip.value = '请点击左上角「← 返回工作台」，使用「直接派单」将工单转派给工程师。'
+  }
+}
+
+function handleDispatchSubmit() {
+  formError.value = ''
+  if (confirmDisabled.value) return
+  if (!form.isClaim) {
+    formError.value = '请选择「是否索赔」'
+    return
+  }
+  if (!form.returnToFactory) {
+    formError.value = '请选择「桩是否返厂」'
+    return
+  }
+  if (!form.projectCode.trim()) {
+    formError.value = '请填写「项目编号」'
+    return
+  }
+  if (!form.appointmentAt) {
+    formError.value = '请选择「预约上门时间」'
+    return
+  }
+  emit('dispatch-v11', {
+    isClaim: form.isClaim === 'yes',
+    returnToFactory: form.returnToFactory === 'yes',
+    projectCode: form.projectCode.trim(),
+    appointmentAt: form.appointmentAt,
+    photoNames: uploadedFiles.value.map(f => f.name).join(',')
+  })
+}
+
+function triggerSimCallback(eventState) {
+  if (!latestV11Order.value || !props.canProcess || props.busy || isProblemTerminal.value) return
+  const externalNo = latestV11Order.value.externalNo
+  const customReceipt = simForm.receipt.trim()
+  if (eventState === 'accepted') {
+    emit('lz-callback', {
+      externalNo,
+      state: 'accepted',
+      receipt: customReceipt || '智享乐装已接单，已分配现场服务工程师'
+    })
+    return
+  }
+  if (eventState === 'arrived') {
+    emit('lz-callback', {
+      externalNo,
+      state: 'arrived',
+      receipt: customReceipt || '工程师已到达现场并核验故障桩体'
+    })
+    return
+  }
+  emit('lz-callback', {
+    externalNo,
+    state: 'completed',
+    receipt: customReceipt || '现场更换备件并通电复测正常，已完工回传',
+    replacedParts: simForm.replacedParts.trim() || '交流接触器模块',
+    oldPartNo: simForm.oldPartNo.trim() || 'OP-20261125-01',
+    oldPartPhoto: uploadedFiles.value[0]?.name || '旧件铭牌照.jpg',
+    customerAcceptResult: simForm.customerAcceptResult || '客户现场验收通过',
+    feeOwner: simForm.feeOwner || '厂家质保'
+  })
+}
+
+function handleLegacyReceipt() {
+  const receipt = legacyReceipt.receipt.trim()
+  if (!legacyActiveOrder.value || !props.canProcess || props.busy || !receipt) return
+  if (legacyReceipt.state === legacyActiveOrder.value.state) return
   emit('field-result', {
-    externalNo: activeFieldOrder.value.externalNo,
-    state: receiptForm.state,
+    externalNo: legacyActiveOrder.value.externalNo,
+    state: legacyReceipt.state,
     receipt
   })
-  receiptForm.receipt = ''
+  legacyReceipt.receipt = ''
 }
 
 watch(
-  () => props.problem?.id,
-  () => {
-    form.externalNo = activeFieldOrder.value?.externalNo || ''
-    receiptForm.receipt = ''
-    receiptForm.state = activeFieldOrder.value?.state === 'in_progress' ? 'complete' : 'complete'
-    showPreview.value = false
-  },
-  { immediate: true }
+  () => form.projectCode,
+  val => {
+    if (val && val !== defaultProjectCode.value) {
+      projectTouched.value = true
+    }
+  }
 )
 
 watch(
-  activeFieldOrder,
-  nextOrder => {
-    if (nextOrder?.externalNo) form.externalNo = nextOrder.externalNo
-    if (nextOrder?.state === 'in_progress' && receiptForm.state === 'in_progress') {
-      receiptForm.state = 'complete'
+  () => [props.problem?.id, props.problem?.version, props.device?.projectCode],
+  ([newId], oldVals) => {
+    const oldId = oldVals ? oldVals[0] : undefined
+    if (newId !== oldId) {
+      form.isClaim = ''
+      form.returnToFactory = ''
+      form.projectCode = ''
+      form.appointmentAt = ''
+      uploadedFiles.value = []
+      projectTouched.value = false
+      refreshTip.value = ''
+      auxTip.value = ''
     }
-  }
+    syncFromProps()
+  },
+  { immediate: true }
 )
 </script>
 
@@ -590,7 +964,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 14px 20px;
-  padding: 16px 18px;
+  padding: 14px 18px;
   background: #fff;
   border: 1px solid var(--line, #eaeef2);
   border-radius: 12px;
@@ -611,7 +985,7 @@ watch(
   gap: 6px;
   min-height: 36px;
   padding: 6px 12px;
-  border: 1px solid #d5ebe5;
+  border: 1px solid #cce7e2;
   border-radius: 8px;
   background: var(--pine-soft, #e8f6f4);
   color: var(--pine, #0f766e);
@@ -652,7 +1026,7 @@ watch(
 }
 
 .top-subtitle {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--muted, #8a96a5);
   font-size: 12px;
 }
@@ -664,7 +1038,7 @@ watch(
   gap: 8px;
   list-style: none;
   margin: 0;
-  padding: 8px 12px;
+  padding: 8px 14px;
   background: #f8fafc;
   border: 1px solid var(--line, #eaeef2);
   border-radius: 10px;
@@ -699,6 +1073,7 @@ watch(
 .step-item.active .step-num {
   background: var(--pine, #0f766e);
   color: #fff;
+  box-shadow: 0 0 0 3px #0d948824;
 }
 
 .step-item.done .step-text,
@@ -715,9 +1090,9 @@ watch(
 /* 三栏主区域 */
 .dispatch-grid {
   display: grid;
-  grid-template-columns: minmax(250px, 0.95fr) minmax(260px, 1fr) minmax(320px, 1.25fr);
+  grid-template-columns: minmax(260px, 0.95fr) minmax(260px, 0.95fr) minmax(320px, 1.15fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .card-col,
@@ -755,21 +1130,98 @@ watch(
   font-weight: 700;
 }
 
+.title-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.info-mark {
+  display: inline-grid;
+  place-items: center;
+  color: var(--pine, #0f766e);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: help;
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid #dce3ec;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink, #334155);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  border-color: var(--pine, #0f766e);
+  color: var(--pine, #0f766e);
+  background: var(--pine-soft, #e8f6f4);
+}
+
+.inline-feedback {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--pine-soft, #e8f6f4);
+  color: var(--pine, #0f766e);
+  font-size: 12px;
+}
+
+/* 左栏：待派工单 */
+.order-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--pine-soft, #e8f6f4);
+  border: 1px solid #cce9e4;
+  margin-bottom: 12px;
+}
+
+.order-banner-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.order-label {
+  color: var(--pine, #0f766e);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.order-code {
+  color: var(--pine-ink, #102c2b);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
 /* 状态胶囊 */
 .status-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .status-pill i {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -783,34 +1235,9 @@ watch(
 .status-pill.triage { background: #fce7f3; color: #9d174d; }
 .status-pill.follow { background: #ecfccb; color: #3f6212; }
 
-/* 左栏内容 */
-.order-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--pine-soft, #e8f6f4);
-  border: 1px solid #cce9e4;
-  margin-bottom: 12px;
-}
-
-.order-label {
-  color: var(--pine, #0f766e);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.order-code {
-  color: var(--pine-ink, #102c2b);
-  font-size: 14px;
-  font-weight: 700;
-}
-
 .info-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin: 0 0 14px;
 }
 
@@ -818,8 +1245,9 @@ watch(
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 10px;
-  padding: 6px 0;
+  padding: 7px 0;
   border-bottom: 1px solid #f1f5f9;
+  align-items: center;
 }
 
 .info-row dt {
@@ -833,21 +1261,45 @@ watch(
   font-size: 13px;
   font-weight: 500;
   overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.contact-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.phone-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pine-soft, #e8f6f4);
+  color: var(--pine, #0f766e);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
 
-.fault-summary {
+.remark-box {
   padding: 12px;
   border-radius: 8px;
   background: #f8fafc;
   border: 1px solid var(--line, #eaeef2);
 }
 
-.fault-head {
+.remark-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -855,28 +1307,15 @@ watch(
   margin-bottom: 6px;
   color: var(--muted, #8a96a5);
   font-size: 11px;
+  font-weight: 600;
 }
 
-.fault-title {
-  display: block;
-  color: var(--heading, #0f172a);
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.fault-desc {
+.remark-text {
   margin: 0;
   color: var(--ink, #334155);
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
-}
-
-.fault-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
 }
 
 .mini-chip {
@@ -885,6 +1324,7 @@ watch(
   background: #eef2f6;
   color: #475569;
   font-size: 11px;
+  font-weight: 500;
 }
 
 .mini-chip.pine {
@@ -892,7 +1332,7 @@ watch(
   color: var(--pine, #0f766e);
 }
 
-/* 中栏只读带入 */
+/* 中栏：自动带入（只读） */
 .lock-badge {
   display: inline-flex;
   align-items: center;
@@ -907,7 +1347,7 @@ watch(
 
 .readonly-stack {
   display: grid;
-  gap: 10px;
+  gap: 11px;
 }
 
 .readonly-field {
@@ -916,33 +1356,28 @@ watch(
 }
 
 .readonly-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
   color: #475569;
 }
 
-.field-lock {
-  display: inline-flex;
+.readonly-box {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 3px;
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 500;
 }
 
 .readonly-input {
   width: 100%;
   min-height: 36px;
-  padding: 7px 10px;
+  padding: 7px 32px 7px 10px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f1f5f9;
   color: #475569;
   font-size: 12px;
   cursor: default;
+  text-overflow: ellipsis;
 }
 
 .readonly-input:focus {
@@ -951,41 +1386,37 @@ watch(
   border-color: #e2e8f0;
 }
 
+.box-lock {
+  position: absolute;
+  right: 10px;
+  font-size: 12px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .sync-tip {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   margin: 14px 0 0;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 8px;
   background: var(--pine-soft, #e8f6f4);
   color: var(--pine, #0f766e);
   font-size: 12px;
-  line-height: 1.5;
 }
 
-.sync-tip svg {
-  flex: none;
-  margin-top: 2px;
-}
-
-/* 右栏补填字段 */
-.active-order-tag,
-.preview-tag {
-  padding: 3px 8px;
-  border-radius: 6px;
+/* 右栏：需补填字段（单列纵向） */
+.required-hint {
   font-size: 11px;
-  font-weight: 600;
+  color: var(--muted, #8a96a5);
+  white-space: nowrap;
 }
 
-.active-order-tag {
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-}
-
-.preview-tag {
-  background: #fff8e8;
-  color: #b45309;
+.req {
+  font-style: normal;
+  color: #c0362c;
+  font-weight: 700;
 }
 
 .state-alert {
@@ -1004,6 +1435,12 @@ watch(
   color: var(--pine-ink, #102c2b);
 }
 
+.state-alert.danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .state-alert strong {
   display: block;
   margin-bottom: 2px;
@@ -1015,15 +1452,9 @@ watch(
 }
 
 .dispatch-form {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-}
-
-.bool-grid,
-.two-col-inputs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
 }
 
 .form-group {
@@ -1038,45 +1469,21 @@ watch(
   font-weight: 600;
 }
 
-.req {
-  font-style: normal;
-  color: #c0362c;
-}
-
-.choice-pills {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.choice-pill {
-  min-height: 36px;
-  border: 1px solid #dce3ec;
-  border-radius: 8px;
-  background: #fff;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.choice-pill.selected {
-  border-color: var(--pine, #0f766e);
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-weight: 700;
-}
-
 .field-input {
   width: 100%;
   min-width: 0;
-  min-height: 38px;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
   border: 1px solid #dce3ec;
   border-radius: 8px;
   background: #fff;
   color: var(--ink, #334155);
   font-size: 12px;
+}
+
+.field-input.compact {
+  min-height: 32px;
+  padding: 4px 8px;
 }
 
 .field-input:focus {
@@ -1094,7 +1501,7 @@ watch(
 /* 上传区 */
 .upload-section {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding-top: 4px;
 }
 
@@ -1102,21 +1509,18 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
 }
 
-.upload-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid #a4d2c9;
-  border-radius: 6px;
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+.upload-count {
+  font-size: 11px;
+  color: var(--muted, #8a96a5);
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted, #8a96a5);
 }
 
 .sr-only {
@@ -1130,38 +1534,67 @@ watch(
   border: 0;
 }
 
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1.5px dashed #a4d2c9;
+  border-radius: 8px;
+  background: #f8fcfb;
+  color: var(--pine, #0f766e);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.dropzone:hover:not(.disabled),
+.dropzone.dragging {
+  background: var(--pine-soft, #e8f6f4);
+  border-color: var(--pine, #0f766e);
+}
+
+.dropzone.disabled {
+  border-color: #dce3ec;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.drop-icon {
+  font-size: 13px;
+}
+
 .file-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 2px;
 }
 
 .file-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px 9px;
   border: 1px solid var(--line, #eaeef2);
   border-radius: 8px;
   background: #fff;
-}
-
-.file-card.placeholder {
-  border-style: dashed;
-  background: #f8fafc;
 }
 
 .file-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
 
 .file-tag {
-  align-self: flex-start;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
   background: var(--pine-soft, #e8f6f4);
   color: var(--pine, #0f766e);
@@ -1169,16 +1602,11 @@ watch(
   font-weight: 600;
 }
 
-.file-tag.muted {
-  background: #eef2f6;
-  color: #64748b;
-}
-
 .remove-file {
   border: 0;
   background: transparent;
   color: #94a3b8;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1;
   padding: 0 2px;
   cursor: pointer;
@@ -1189,7 +1617,7 @@ watch(
 }
 
 .file-name {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--heading, #0f172a);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1198,15 +1626,68 @@ watch(
 
 .file-meta {
   color: var(--muted, #8a96a5);
-  font-size: 11px;
+  font-size: 10px;
 }
 
-.form-actions {
+.file-slot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--pine, #0f766e);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.file-slot-btn:hover {
+  border-color: var(--pine, #0f766e);
+  background: var(--pine-soft, #e8f6f4);
+}
+
+.form-error {
+  margin: 0;
+  color: #c0362c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 底部左右分栏 */
+.bottom-split {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(420px, 1.4fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.bottom-card-head h3,
+.bottom-head h3 {
+  margin: 0;
+  color: var(--heading, #0f172a);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.bottom-sub {
+  margin: 3px 0 0;
+  color: var(--muted, #8a96a5);
+  font-size: 12px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding-top: 4px;
+  gap: 6px;
+}
+
+.left-btn-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .btn-primary,
@@ -1215,7 +1696,7 @@ watch(
   align-items: center;
   justify-content: center;
   min-height: 38px;
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
@@ -1240,57 +1721,65 @@ watch(
   color: var(--ink, #334155);
 }
 
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--pine, #0f766e);
+  color: var(--pine, #0f766e);
+}
+
 .btn-primary:disabled,
 .btn-secondary:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
+.compact-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.block-tip {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .perm-tip {
+  margin: 10px 0 0;
   color: #b45309;
   font-size: 12px;
 }
 
-.preview-box {
-  padding: 10px 12px;
-  border-radius: 8px;
+.aux-tip {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
   background: var(--pine-soft, #e8f6f4);
-  border: 1px solid #cce9e4;
-  color: var(--pine-ink, #102c2b);
+  color: var(--pine, #0f766e);
   font-size: 12px;
 }
 
-.preview-box strong {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.preview-box p {
-  margin: 0;
-  line-height: 1.6;
-}
-
-/* 底部 4 节点进度条 */
+/* 底部右卡：回传状态 */
 .bottom-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
-.bottom-head h3 {
-  margin: 0;
-  color: var(--heading, #0f172a);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.bottom-sub {
-  margin: 3px 0 0;
-  color: var(--muted, #8a96a5);
-  font-size: 12px;
+.state-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pine-soft, #e8f6f4);
+  color: var(--pine, #0f766e);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .closed-pill {
@@ -1302,13 +1791,32 @@ watch(
   font-weight: 600;
 }
 
+.anomaly-alert {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.anomaly-alert strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.anomaly-alert p {
+  margin: 0;
+}
+
 .callback-track {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   list-style: none;
   margin: 0;
-  padding: 14px;
+  padding: 12px 14px;
   background: #f8fafc;
   border: 1px solid var(--line, #eaeef2);
   border-radius: 10px;
@@ -1328,13 +1836,13 @@ watch(
 .node-dot {
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: 999px;
   background: #e2e8f0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -1347,7 +1855,7 @@ watch(
 .track-node.current .node-dot {
   background: var(--pine, #0f766e);
   color: #fff;
-  box-shadow: 0 0 0 4px #0d948824;
+  box-shadow: 0 0 0 3px #0d948824;
 }
 
 .node-connector {
@@ -1364,7 +1872,7 @@ watch(
 .node-copy strong {
   display: block;
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .track-node.done .node-copy strong,
@@ -1372,45 +1880,112 @@ watch(
   color: var(--heading, #0f172a);
 }
 
-.node-copy small {
+.node-time {
   display: block;
   color: var(--muted, #8a96a5);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 快捷回执条 */
-.quick-receipt-bar {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line, #eaeef2);
-}
-
-.receipt-bar-head {
+.callback-summary {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 8px 16px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--pine-soft, #e8f6f4);
+  color: var(--pine-ink, #102c2b);
+  font-size: 12px;
 }
 
-.receipt-bar-head strong {
+/* 模拟智享乐装回传触发器 */
+.sim-callback-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #eaeef2);
+  display: grid;
+  gap: 8px;
+}
+
+.sim-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-head strong {
   color: var(--heading, #0f172a);
   font-size: 13px;
 }
 
 .muted-note {
   color: var(--muted, #8a96a5);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.receipt-form {
+.sim-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sim-btn {
+  padding: 6px 12px;
+  border: 1px solid #cce7e2;
+  border-radius: 7px;
+  background: var(--pine-soft, #e8f6f4);
+  color: var(--pine, #0f766e);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sim-btn:hover:not(:disabled) {
+  background: #d7eeeb;
+}
+
+.sim-btn.primary {
+  border-color: var(--pine, #0f766e);
+  background: var(--pine, #0f766e);
+  color: #fff;
+}
+
+.sim-btn.primary:hover:not(:disabled) {
+  background: var(--pine-bright, #0d9488);
+}
+
+.sim-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sim-fields-grid {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sim-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sim-field span {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.legacy-receipt-form {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
 
-/* 响应式：窄屏自动堆叠 */
 @media (max-width: 1120px) {
   .dispatch-grid {
     grid-template-columns: 1fr 1fr;
@@ -1418,15 +1993,21 @@ watch(
   .dispatch-grid > :last-child {
     grid-column: 1 / -1;
   }
+  .bottom-split {
+    grid-template-columns: 1fr;
+  }
+  .sim-fields-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 760px) {
   .dispatch-grid,
-  .bool-grid,
-  .two-col-inputs,
   .file-grid,
+  .left-btn-group,
   .callback-track,
-  .receipt-form {
+  .sim-fields-grid,
+  .legacy-receipt-form {
     grid-template-columns: 1fr;
   }
   .dispatch-grid > :last-child {

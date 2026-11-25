@@ -15,8 +15,13 @@
         <p id="new-password-error" class="error-msg">新密码需要 8 到 72 位，并同时包含字母和数字。</p>
         <label class="field-label" for="new-role">角色</label>
         <select id="new-role" v-model="role" class="text-input">
-          <option value="operator">坐席</option>
-          <option value="admin">管理员</option>
+          <option value="operator">客服坐席</option>
+          <option value="dispatcher">调度员</option>
+          <option value="engineer">技术支持/一线工程师</option>
+          <option value="quality">质量复核</option>
+          <option value="provider">服务商</option>
+          <option value="oem">整车厂</option>
+          <option value="admin">系统管理员</option>
         </select>
         <button class="btn primary" type="submit" :disabled="busy">创建账号</button>
       </form>
@@ -25,7 +30,7 @@
     <section class="panel">
       <h2>账号列表</h2>
       <div v-for="item in accounts" :key="item.username" class="account-row">
-        <span>{{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }} · {{ item.enabled ? '启用' : '停用' }}</span>
+        <span>{{ item.username }} · {{ roleLabel(item.role) }} · {{ item.enabled ? '启用' : '停用' }}</span>
         <button class="btn secondary" type="button" :disabled="busy" @click="$emit('toggle', item)">{{ item.enabled ? '停用' : '启用' }}</button>
       </div>
       <form class="stack-form action-block" :class="{ settled: resetSettled }" @submit.prevent="submitReset">
@@ -50,6 +55,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { roleLabel } from '../status'
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
