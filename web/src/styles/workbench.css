@@ -1108,6 +1108,62 @@ form.settled .secret:has(input:user-invalid) + .error-msg { display: none; }
 .section-divider { height: 1px; background: var(--border-subtle); margin: var(--space-4) 0; }
 .section-label { font-size: var(--fs-body-sm); font-weight: var(--fw-semibold); color: var(--text-secondary); margin-bottom: var(--space-3); display: flex; align-items: center; gap: 6px; }
 
+/* 键值描述列表 & 4 列设备档案网格 */
+.desc { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: var(--space-3); row-gap: 10px; margin: 0; }
+.desc dt { font-size: var(--fs-body-sm); color: var(--text-tertiary); }
+.desc dd { margin: 0; font-size: var(--fs-body-sm); font-weight: var(--fw-medium); color: var(--text-primary); word-break: break-all; }
+.desc-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--space-6); row-gap: var(--space-4); margin: 0; }
+.desc-grid__label { font-size: var(--fs-caption); color: var(--text-tertiary); margin-bottom: 4px; }
+.desc-grid__value { font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-medium); color: var(--text-primary); }
+@media (max-width: 1024px) { .desc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .desc-grid { grid-template-columns: 1fr; } }
+
+/* 顶部来电告警条内部控件 */
+.call-banner__icon {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--danger-solid); color: #fff; animation: sg-ring 1.6s var(--ease) infinite;
+}
+.call-banner__icon svg { width: 14px; height: 14px; }
+.call-banner__status { font-size: var(--fs-body-sm); font-weight: var(--fw-semibold); color: var(--danger-fg); }
+.call-banner__phone  { font-family: var(--font-mono); font-size: var(--fs-body); font-weight: var(--fw-semibold); color: #7A1F18; letter-spacing: 0.02em; }
+.call-banner__meta   { font-size: var(--fs-body-sm); color: #9A3A32; font-variant-numeric: tabular-nums; }
+.call-banner__sep    { width: 1px; height: 14px; background: #EBB3AD; flex: none; }
+.call-banner__rec    { display: inline-flex; align-items: center; gap: 6px; }
+.call-banner__rec::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--danger-solid); animation: sg-blink 1.2s steps(2) infinite; }
+.call-banner__wave   { display: flex; align-items: center; gap: 2px; height: 16px; }
+.call-banner__wave i { display: block; width: 2px; height: 100%; border-radius: 1px; background: var(--danger-solid); transform-origin: center; animation: sg-wave 1s var(--ease) infinite; }
+.call-banner__wave i:nth-child(2) { animation-delay: .15s; }
+.call-banner__wave i:nth-child(3) { animation-delay: .3s; }
+.call-banner__wave i:nth-child(4) { animation-delay: .45s; }
+.call-banner__wave i:nth-child(5) { animation-delay: .6s; }
+
+/* 6 节点步骤进度条（带连接线与当前态光环） */
+.stepper {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: var(--space-4) var(--space-2) 14px;
+  background: var(--bg-subtle); border: 0; border-radius: var(--radius-lg);
+}
+.step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.step::before {
+  content: ""; position: absolute; top: 11px; height: 2px; border-radius: 1px;
+  left: calc(-50% + 18px); right: calc(50% + 18px); background: var(--border-default);
+}
+.step:first-child::before { display: none; }
+.step__node {
+  position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: var(--font-num); font-size: var(--fs-caption); font-weight: var(--fw-semibold);
+  background: #fff; border: 1.5px solid var(--border-strong); color: var(--text-tertiary);
+}
+.step__label { font-size: var(--fs-body-sm); color: var(--text-tertiary); }
+.step__time  { font-size: var(--fs-caption); color: var(--text-disabled); font-variant-numeric: tabular-nums; min-height: 18px; }
+.step.is-done::before, .step.is-current::before { background: var(--brand-600); }
+.step.is-done .step__node { background: var(--brand-700); border-color: var(--brand-700); color: #fff; }
+.step.is-done .step__label { color: var(--text-secondary); }
+.step.is-current .step__node { background: #fff; border: 2px solid var(--brand-700); color: var(--brand-700); box-shadow: 0 0 0 4px rgba(13,148,136,.14); }
+.step.is-current .step__label { color: var(--text-primary); font-weight: var(--fw-semibold); }
+.step.is-current .step__time  { color: var(--text-tertiary); }
+
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 8px; border-radius: var(--radius-pill);
