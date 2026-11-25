@@ -22,12 +22,14 @@
       <button v-if="wide && view === 'detail'" class="sidebar-toggle" type="button" :aria-expanded="sidebarExpanded" :aria-label="sidebarExpanded ? '收起导航' : '展开导航'" @click="sidebarExpanded = !sidebarExpanded">{{ sidebarExpanded ? '‹' : '›' }}</button>
       <nav class="navs">
         <p class="group-title">工作台</p>
+        <button type="button" class="nav-link" aria-label="调度大屏" title="调度大屏" :aria-current="currentNav('dispatch') ? 'page' : undefined" @click="showNav('dispatch')"><NavIcon name="board" /><span>调度大屏</span></button>
         <button type="button" class="nav-link" aria-label="问题单总表" title="问题单总表" :aria-current="currentNav('board') ? 'page' : undefined" @click="showNav('board')"><NavIcon name="board" /><span>问题单总表</span></button>
         <button type="button" class="nav-link" aria-label="待认领池" title="待认领池" :aria-current="currentNav('pool') ? 'page' : undefined" @click="showNav('pool')"><NavIcon name="pool" /><span>待认领池</span><b v-if="unclaimedCount !== null" class="count-pill">{{ unclaimedCount }}</b></button>
         <button type="button" class="nav-link" aria-label="我的待办" title="我的待办" :aria-current="currentNav('mine') ? 'page' : undefined" @click="showNav('mine')"><NavIcon name="mine" /><span>我的待办</span></button>
         <button type="button" class="nav-link" aria-label="到期回访" title="到期回访" :aria-current="currentNav('due') ? 'page' : undefined" @click="showNav('due')"><NavIcon name="due" /><span>到期回访</span><span v-if="dueCount !== null" class="due-pill"><i></i>{{ dueCount }}</span></button>
-        <p class="group-title next">受理与查询</p>
+        <p class="group-title next">受理与知识</p>
         <button type="button" class="nav-link" aria-label="查桩与建单" title="查桩与建单" :aria-current="currentNav('intake') ? 'page' : undefined" @click="showNav('intake')"><NavIcon name="intake" /><span>查桩与建单</span></button>
+        <button type="button" class="nav-link" aria-label="知识库与SOP" title="知识库与SOP" :aria-current="currentNav('knowledge') ? 'page' : undefined" @click="showNav('knowledge')"><NavIcon name="due" /><span>知识库与 SOP</span></button>
         <p class="group-title next">系统管理</p>
         <button v-if="account.role === 'admin'" type="button" class="nav-link" aria-label="坐席与账号" title="坐席与账号" :aria-current="currentNav('accounts') ? 'page' : undefined" @click="showNav('accounts')"><NavIcon name="accounts" /><span>坐席与账号</span></button>
         <button type="button" class="nav-link" aria-label="安全与改密" title="安全与改密" :aria-current="currentNav('security') ? 'page' : undefined" @click="showNav('security')"><NavIcon name="security" /><span>安全与改密</span></button>
@@ -96,7 +98,9 @@
         <span class="summary-divider"></span>
         <p>全部问题单共 <strong>{{ summary.total }}</strong> 条<span v-if="scopeText" class="scope">（{{ scopeText }}）</span></p>
       </section>
-      <ProblemBoard v-if="view === 'board'" :items="boardItems" :total="boardTotal" :page="boardPage" :page-size="pageSize" :has-next="boardHasNext" :busy="busy" :filters="boardFilters" :summary="summary" :categories="boardCategories" :assignees="assignees" @open="openProblem" @claim="claimRow" @search="searchBoard" @page="goToBoardPage" />
+      <DispatchDashboard v-if="view === 'dispatch'" :items="boardItems" :summary="summary" :assignees="assignees" :busy="busy" @open="openProblem" @open-board="openBoard" @claim="claimFromDispatch" />
+      <KnowledgeSopView v-else-if="view === 'knowledge'" />
+      <ProblemBoard v-else-if="view === 'board'" :items="boardItems" :total="boardTotal" :page="boardPage" :page-size="pageSize" :has-next="boardHasNext" :busy="busy" :filters="boardFilters" :summary="summary" :categories="boardCategories" :assignees="assignees" @open="openProblem" @claim="claimRow" @search="searchBoard" @page="goToBoardPage" />
       <QueueList v-else-if="view === 'mine'" :items="mineItems" :total="mineTotal" :busy="busy" :has-more="Boolean(mineNext)" empty="当前没有负责中的问题单" @open="openProblem" @more="moreMine" />
       <QueueList v-else-if="view === 'due'" :items="dueItems" :total="dueTotal" :busy="busy" :has-more="Boolean(dueNext)" :empty="dueScope === 'mine' ? '我的到期回访为空' : '团队到期回访为空'" @open="openProblem" @more="moreDue" />
       <IntakePanel v-else-if="view === 'intake'" v-model:query="query" v-model:title="title" v-model:description="description" :device="device" :orders="deviceOrders" :busy="busy" @search="search" @create="create" @open="openProblem" />
@@ -142,7 +146,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AccountPanel from './components/AccountPanel.vue'
 import BrandLogo from './components/BrandLogo.vue'
+import DispatchDashboard from './components/DispatchDashboard.vue'
 import IntakePanel from './components/IntakePanel.vue'
+import KnowledgeSopView from './components/KnowledgeSopView.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import NavIcon from './components/NavIcon.vue'
 import PasswordPanel from './components/PasswordPanel.vue'
@@ -216,11 +222,13 @@ const {
 
 const pageTitle = computed(() => {
   if (view.value === 'board' && boardFilters.value.bucket === 'unclaimed') return '待认领池'
-  return { board: '问题单总表', due: '到期回访', mine: '我的待办', intake: '查桩与建单', accounts: '坐席与账号', security: '安全与改密' }[view.value] || '问题单总表'
+  return { dispatch: '统一工单池 · 调度大屏', knowledge: '知识库与 SOP 管理', board: '问题单总表', due: '到期回访', mine: '我的待办', intake: '查桩与建单', accounts: '坐席与账号', security: '安全与改密' }[view.value] || '问题单总表'
 })
 const pageLede = computed(() => {
   if (view.value === 'board' && boardFilters.value.bucket === 'unclaimed') return '负责人为无主的问题单。认领成功后才能继续处理。'
   return {
+    dispatch: '实时查看工单池、坐席在岗状态、渠道分布、超时趋势与本月排班（未接入项使用模拟数据）',
+    knowledge: '按故障分类维护两段式 SOP、必传证据要求、A/B/C 分级与换装自动审批规则（配置演示）',
     board: '统一管理售后受理、认领流转与回访闭环',
     due: dueScope.value === 'mine' ? '我负责或由我回访、且已到时间的问题单' : '团队里已到回访时间的问题单',
     mine: '当前账号负责且未结案的问题单',
@@ -294,7 +302,7 @@ async function prepareWorkspace() {
 async function restoreRoute() {
   const params = new URLSearchParams(location.search)
   const problemId = params.get('problem')
-  const views = ['board', 'due', 'mine', 'intake', 'accounts', 'security']
+  const views = ['dispatch', 'knowledge', 'board', 'due', 'mine', 'intake', 'accounts', 'security']
   if (problemId) {
     const from = params.get('from')
     returnView.value = views.includes(from) ? from : 'board'
@@ -606,6 +614,11 @@ function claim() {
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
+}
+function claimFromDispatch(target) {
+  const item = typeof target === 'string' ? boardItems.value.find(row => row.id === target) : target
+  if (item) return claimRow(item)
+  return undefined
 }
 function claimRow(item) {
   return run(async () => {

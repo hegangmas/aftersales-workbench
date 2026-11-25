@@ -1,5 +1,15 @@
 <template>
-  <article class="personal" :class="{ 'mobile-compact': mobileCompact }">
+  <FieldDispatchPanel
+    v-if="dispatchMode"
+    :problem="problem"
+    :device="device"
+    :busy="busy"
+    :can-process="canProcess"
+    @link="$emit('link', $event)"
+    @field-result="$emit('field-result', $event)"
+    @back="dispatchMode = false"
+  />
+  <article v-else class="personal" :class="{ 'mobile-compact': mobileCompact }">
     <div v-if="device && device.simulatedCall" class="call-strip">
       <span><strong>400 来电弹屏（模拟）</strong> · {{ device.simulatedCall.caller }}</span>
       <span>通话 {{ device.simulatedCall.duration }} · {{ device.simulatedCall.recordingStatus }}</span>
@@ -197,7 +207,7 @@
         <div v-if="canProcess" class="quick-bar">
           <button class="btn primary" type="button" @click="focusEl('action-note')">记录跟进</button>
           <button class="btn secondary" type="button" @click="focusEl('action-callback')">安排回访</button>
-          <button class="btn secondary" type="button" @click="focusEl('action-field')">派单至智享乐装</button>
+          <button class="btn secondary" type="button" @click="dispatchMode = true">派单至智享乐装</button>
           <button class="btn secondary" type="button" @click="focusEl('problem-actions')">全部操作</button>
         </div>
       </section>
@@ -317,6 +327,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import FieldDispatchPanel from './FieldDispatchPanel.vue'
 import FieldOrders from './FieldOrders.vue'
 import SopEvidencePanel from './SopEvidencePanel.vue'
 import WorkflowExtras from './WorkflowExtras.vue'
@@ -344,6 +355,7 @@ defineEmits([
 ])
 
 const fieldLabels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }
+const dispatchMode = ref(false)
 const mobileCompact = ref(true)
 const playingId = ref('')
 const jumpNotice = ref(false)
@@ -436,6 +448,7 @@ async function loadRelated() {
 }
 
 watch(() => [props.problem.id, props.problem.device], () => {
+  dispatchMode.value = false
   loadRelated()
 }, { immediate: true })
 
