@@ -1,200 +1,381 @@
 <template>
   <div v-if="!authReady" class="booting"></div>
-  <LoginScreen v-else-if="!account" ref="loginPanel" v-model:username="username" v-model:password="password" v-model:remember="rememberAccount" :busy="busy" :error="error" @submit="signIn" />
-  <div v-else class="shell" :class="{ 'personal-mode': view === 'detail' && !sidebarExpanded }">
-    <header class="mobile-bar">
-      <button class="menu-button" type="button" aria-label="打开菜单" :aria-expanded="navOpen" aria-controls="workbench-nav" @click="navOpen = true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
-      </button>
-      <BrandLogo class="bar-logo" variant="teal" alt="松果" width="108px" />
-      <strong>售后工作台</strong>
-      <span class="test-tag">模拟数据</span>
-    </header>
-    <button v-if="!wide && navOpen" class="backdrop" type="button" aria-label="关闭菜单" @click="navOpen = false"></button>
-    <aside id="workbench-nav" class="sidebar" :class="{ open: navOpen }" :inert="!wide && !navOpen" :role="!wide && navOpen ? 'dialog' : undefined" :aria-modal="!wide && navOpen ? 'true' : undefined" aria-label="工作台导航">
-      <div class="brand">
-        <BrandLogo class="sidebar-logo" variant="teal" alt="松果" width="156px" />
-        <div class="brand-copy">
-          <h1 class="brand-title">售后工作台</h1>
-          <div class="brand-sub"><span class="test-tag">模拟数据</span></div>
+  <LoginScreen
+    v-else-if="!account"
+    ref="loginPanel"
+    v-model:username="username"
+    v-model:password="password"
+    v-model:remember="rememberAccount"
+    :busy="busy"
+    :error="error"
+    @submit="signIn"
+  />
+  <div v-else class="v11-shell" @click="closeMenus">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-brand">
+          <BrandLogo variant="teal" alt="松果" width="96px" />
+          <span>售后工单中台</span>
         </div>
-      </div>
-      <button v-if="wide && view === 'detail'" class="sidebar-toggle" type="button" :aria-expanded="sidebarExpanded" :aria-label="sidebarExpanded ? '收起导航' : '展开导航'" @click="sidebarExpanded = !sidebarExpanded">{{ sidebarExpanded ? '‹' : '›' }}</button>
-      <nav class="navs">
-        <p class="group-title">工作台</p>
-        <button type="button" class="nav-link" aria-label="调度大屏" title="调度大屏" :aria-current="currentNav('dispatch') ? 'page' : undefined" @click="showNav('dispatch')"><NavIcon name="board" /><span>调度大屏</span></button>
-        <button type="button" class="nav-link" aria-label="问题单总表" title="问题单总表" :aria-current="currentNav('board') ? 'page' : undefined" @click="showNav('board')"><NavIcon name="board" /><span>问题单总表</span></button>
-        <button type="button" class="nav-link" aria-label="待认领池" title="待认领池" :aria-current="currentNav('pool') ? 'page' : undefined" @click="showNav('pool')"><NavIcon name="pool" /><span>待认领池</span><b v-if="unclaimedCount !== null" class="count-pill">{{ unclaimedCount }}</b></button>
-        <button type="button" class="nav-link" aria-label="我的待办" title="我的待办" :aria-current="currentNav('mine') ? 'page' : undefined" @click="showNav('mine')"><NavIcon name="mine" /><span>我的待办</span></button>
-        <button type="button" class="nav-link" aria-label="到期回访" title="到期回访" :aria-current="currentNav('due') ? 'page' : undefined" @click="showNav('due')"><NavIcon name="due" /><span>到期回访</span><span v-if="dueCount !== null" class="due-pill"><i></i>{{ dueCount }}</span></button>
-        <p class="group-title next">受理与知识</p>
-        <button type="button" class="nav-link" aria-label="查桩与建单" title="查桩与建单" :aria-current="currentNav('intake') ? 'page' : undefined" @click="showNav('intake')"><NavIcon name="intake" /><span>查桩与建单</span></button>
-        <button type="button" class="nav-link" aria-label="知识库与SOP" title="知识库与SOP" :aria-current="currentNav('knowledge') ? 'page' : undefined" @click="showNav('knowledge')"><NavIcon name="due" /><span>知识库与 SOP</span></button>
-        <p class="group-title next">系统管理</p>
-        <button v-if="account.role === 'admin'" type="button" class="nav-link" aria-label="坐席与账号" title="坐席与账号" :aria-current="currentNav('accounts') ? 'page' : undefined" @click="showNav('accounts')"><NavIcon name="accounts" /><span>坐席与账号</span></button>
-        <button type="button" class="nav-link" aria-label="安全与改密" title="安全与改密" :aria-current="currentNav('security') ? 'page' : undefined" @click="showNav('security')"><NavIcon name="security" /><span>安全与改密</span></button>
-      </nav>
-      <div class="profile">
-        <span class="avatar" aria-hidden="true">{{ initial(account.username) }}</span>
-        <div class="profile-copy">
-          <span
-            ref="whoLabel"
-            class="who"
-            :class="{ truncated: nameOverflows }"
-            :tabindex="nameOverflows ? 0 : undefined"
-            @pointerenter="openNameTip"
-            @pointerleave="scheduleHideNameTip"
-            @focus="openNameTip"
-            @blur="hideNameTip"
-            @click="toggleNameTip"
-          >{{ account.username }}</span>
-          <div class="profile-meta">
-            <span class="role-pill">{{ account.role === 'admin' ? '管理员' : '坐席' }}</span>
-            <select v-model="agentStatus" class="agent-status-select" :class="agentStatus" aria-label="坐席在岗状态" @change="persistAgentStatus">
-              <option value="ready">● 就绪</option>
-              <option value="break">● 休息</option>
-              <option value="away">● 离岗</option>
-            </select>
+
+        <nav class="topbar-nav" aria-label="一级导航">
+          <button
+            v-if="canSeeInternal"
+            type="button"
+            class="top-link"
+            :aria-current="navGroup === 'workbench' ? 'page' : undefined"
+            @click="openWorkbenchTab"
+          >工作台</button>
+
+          <button
+            type="button"
+            class="top-link"
+            :aria-current="navGroup === 'tickets' ? 'page' : undefined"
+            @click="openTicketsRoot"
+          >工单</button>
+
+          <button
+            v-if="canSeeInternal"
+            type="button"
+            class="top-link"
+            :aria-current="navGroup === 'device' ? 'page' : undefined"
+            @click="showNav('device')"
+          >设备</button>
+
+          <button
+            type="button"
+            class="top-link"
+            :aria-current="navGroup === 'knowledge' ? 'page' : undefined"
+            @click="showNav('knowledge')"
+          >知识库</button>
+
+          <div v-if="canSeeAdminMenu" class="nav-dropdown" @click.stop>
+            <button
+              type="button"
+              class="top-link"
+              :class="{ active: navGroup === 'admin' }"
+              :aria-expanded="adminMenuOpen"
+              @click="adminMenuOpen = !adminMenuOpen; userMenuOpen = false"
+            >管理 ▾</button>
+            <div v-if="adminMenuOpen" class="dropdown-panel" role="menu">
+              <button type="button" class="dropdown-item" :aria-current="view === 'admin-customers' ? 'page' : undefined" @click="showAdmin('admin-customers')">客户与项目</button>
+              <button type="button" class="dropdown-item" :aria-current="view === 'admin-sop' ? 'page' : undefined" @click="showAdmin('admin-sop')">SOP 与规则</button>
+              <button type="button" class="dropdown-item" :aria-current="view === 'admin-reports' ? 'page' : undefined" @click="showAdmin('admin-reports')">指标与报表</button>
+              <button type="button" class="dropdown-item" :aria-current="view === 'admin-accounts' ? 'page' : undefined" @click="showAdmin('admin-accounts')">权限与配置</button>
+            </div>
+          </div>
+        </nav>
+
+        <div class="topbar-right">
+          <button v-if="canSeeInternal" type="button" class="bell-btn" title="到期回访提醒" @click="openDue('team')">
+            🔔<span v-if="dueCount" class="bell-badge">{{ dueCount }}</span>
+          </button>
+
+          <select
+            v-if="canSeeInternal"
+            v-model="agentStatus"
+            class="agent-status-select"
+            :class="agentStatus"
+            aria-label="在岗状态"
+            @change="saveDutyStatus"
+          >
+            <option value="ready">● 就绪</option>
+            <option value="break">● 休息</option>
+            <option value="away">● 离岗</option>
+          </select>
+
+          <div class="nav-dropdown" @click.stop>
+            <button type="button" class="top-link" @click="userMenuOpen = !userMenuOpen; adminMenuOpen = false">
+              <span class="avatar mini teal">{{ initial(account.username) }}</span>
+              <span>{{ account.username }}</span>
+              <span class="role-pill">{{ roleLabel(account.role) }}</span>
+              <span>▾</span>
+            </button>
+            <div v-if="userMenuOpen" class="dropdown-panel" style="right:0;left:auto;">
+              <button type="button" class="dropdown-item" @click="showNav('security'); userMenuOpen = false">安全与改密</button>
+              <button type="button" class="dropdown-item" @click="signOut">退出登录</button>
+            </div>
           </div>
         </div>
-        <button class="exit" type="button" aria-label="退出登录" @click="signOut">
-          <NavIcon name="exit" />
-        </button>
-        <div
-          v-show="nameTip && nameOverflows"
-          id="account-name-tip"
-          class="name-tip"
-          role="tooltip"
-          aria-hidden="true"
-          @pointerenter="openNameTip"
-          @pointerleave="scheduleHideNameTip"
-        >{{ account.username }}</div>
       </div>
-    </aside>
-    <main class="workspace">
+    </header>
+
+    <main class="v11-main">
       <div v-if="error" ref="errorSummary" tabindex="-1" class="error-banner">
         <el-alert :title="error" type="error" :closable="false" show-icon />
         <button v-if="conflict" class="btn secondary" type="button" @click="refreshAfterConflict">一键刷新工单</button>
         <button v-else-if="problem && view === 'detail'" class="btn secondary" type="button" @click="openProblem(problem.id)">刷新问题单</button>
       </div>
-      <header v-if="view !== 'detail'" class="page-head">
-        <div>
-          <h1>{{ pageTitle }}</h1>
-          <p>{{ pageLede }}</p>
+
+      <!-- 一级菜单 1：工作台（图 2 受理弹屏） -->
+      <template v-if="view === 'detail'">
+        <PersonalWorkbench
+          v-if="problem"
+          :problem="problem"
+          :draft="draft"
+          :busy="busy"
+          :can-process="canProcess"
+          :can-handoff="canHandoff"
+          :handling-denied="handlingDenied"
+          :next-action="nextAction"
+          :refresh-note="refreshNote"
+          :assignees="assignees"
+          :evidence-labels="evidenceLabels"
+          :field-in-progress="fieldInProgress"
+          @back="openTicketsRoot"
+          @open="openProblem"
+          @claim="claim"
+          @save-note="saveNote"
+          @save-schedule="saveSchedule"
+          @begin-callback="beginCallback"
+          @save-outcome="saveOutcome"
+          @handoff="handoff"
+          @withdraw="withdrawDispatch"
+          @link="saveFieldLink"
+          @field-result="saveFieldResult"
+          @suspend="suspendTicket"
+          @quick-close="quickCloseTicket"
+          @escalate="escalateTicket"
+          @add-evidence="saveEvidence"
+          @assess="saveAssessment"
+          @go-device="jumpToDevice"
+          @go-knowledge="showNav('knowledge')"
+          @bind-device="bindDevice"
+          @assign-v11="assignV11"
+          @dispatch-v11="dispatchV11"
+          @lz-callback="lzCallbackV11"
+          @accept-v11="acceptV11"
+          @reopen-v11="reopenV11"
+        />
+        <section v-else class="panel">
+          <h2>售后受理工作台</h2>
+          <p class="muted">当前尚未打开工单。请从「工单」选择工单进入处理，或前往「设备」查桩建单。</p>
+          <div class="quick-bar" style="border:0;padding-top:0;">
+            <button class="btn primary" type="button" @click="openTicketsRoot">进入工单池</button>
+            <button class="btn secondary" type="button" @click="showNav('device')">查设备建单</button>
+          </div>
+        </section>
+      </template>
+
+      <!-- 一级菜单 2：工单（3 页签：调度大屏 | 统一工单池 | 我的待办） -->
+      <template v-else-if="view === 'tickets'">
+        <div class="ticket-tabs-bar">
+          <div class="ticket-tabs" role="tablist" aria-label="工单视图">
+            <button
+              v-if="canSeeInternal"
+              type="button"
+              role="tab"
+              :aria-selected="ticketTab === 'dispatch'"
+              @click="switchTicketTab('dispatch')"
+            >调度大屏</button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="ticketTab === 'pool'"
+              @click="switchTicketTab('pool')"
+            >统一工单池</button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="ticketTab === 'mine'"
+              @click="switchTicketTab('mine')"
+            >我的待办</button>
+          </div>
+          <div class="head-actions">
+            <button v-if="canSeeInternal" class="btn primary" type="button" @click="showNav('device')">+ 新建工单</button>
+          </div>
         </div>
-        <div class="head-actions">
-          <div v-if="view === 'due'" class="scope-switch" role="group" aria-label="到期回访范围">
+
+        <DispatchDashboard
+          v-if="ticketTab === 'dispatch'"
+          :items="boardItems"
+          :summary="summary"
+          :assignees="assignees"
+          :busy="busy"
+          @open="openProblem"
+          @open-board="openPoolWithBucket"
+          @claim="claimFromDispatch"
+          @force-distribute="runForceDistribute"
+        />
+        <ProblemBoard
+          v-else-if="ticketTab === 'pool'"
+          :items="boardItems"
+          :total="boardTotal"
+          :page="boardPage"
+          :page-size="pageSize"
+          :has-next="boardHasNext"
+          :busy="busy"
+          :filters="boardFilters"
+          :summary="summary"
+          :categories="boardCategories"
+          :assignees="assignees"
+          @open="openProblem"
+          @claim="claimRow"
+          @search="searchBoard"
+          @page="goToBoardPage"
+        />
+        <QueueList
+          v-else
+          :items="mineItems"
+          :total="mineTotal"
+          :busy="busy"
+          :has-more="Boolean(mineNext)"
+          empty="当前没有负责中的工单"
+          @open="openProblem"
+          @more="moreMine"
+        />
+      </template>
+
+      <!-- 到期回访提醒列表（铃铛入口） -->
+      <template v-else-if="view === 'due'">
+        <header class="page-head">
+          <div>
+            <h1>到期回访提醒</h1>
+            <p>{{ dueScope === 'mine' ? '我负责且已到回访时间的工单' : '团队已到回访时间的工单' }}</p>
+          </div>
+          <div class="scope-switch" role="group">
             <button type="button" :aria-pressed="dueScope === 'mine'" @click="openDue('mine')">我的</button>
             <button type="button" :aria-pressed="dueScope === 'team'" @click="openDue('team')">团队</button>
           </div>
-          <button v-if="view === 'board'" class="btn primary" type="button" @click="showNav('intake')">+ 新建问题单</button>
-        </div>
-      </header>
-      <section v-if="view === 'board' && summary" class="summary" aria-label="全量问题单统计摘要">
-        <div class="quick-links">
-          <button class="quick quick-claim" type="button" @click="showNav('pool')"><i></i>待认领 <strong>{{ unclaimedCount }}</strong> 单 <span class="arrow">→</span></button>
-          <button class="quick quick-due" type="button" @click="openDue('team')"><i></i>到期回访 <strong>{{ dueCount }}</strong> 单 <span class="arrow">→</span></button>
-        </div>
-        <span class="summary-divider"></span>
-        <p>全部问题单共 <strong>{{ summary.total }}</strong> 条<span v-if="scopeText" class="scope">（{{ scopeText }}）</span></p>
-      </section>
-      <DispatchDashboard v-if="view === 'dispatch'" :items="boardItems" :summary="summary" :assignees="assignees" :busy="busy" @open="openProblem" @open-board="openBoard" @claim="claimFromDispatch" />
-      <KnowledgeSopView v-else-if="view === 'knowledge'" />
-      <ProblemBoard v-else-if="view === 'board'" :items="boardItems" :total="boardTotal" :page="boardPage" :page-size="pageSize" :has-next="boardHasNext" :busy="busy" :filters="boardFilters" :summary="summary" :categories="boardCategories" :assignees="assignees" @open="openProblem" @claim="claimRow" @search="searchBoard" @page="goToBoardPage" />
-      <QueueList v-else-if="view === 'mine'" :items="mineItems" :total="mineTotal" :busy="busy" :has-more="Boolean(mineNext)" empty="当前没有负责中的问题单" @open="openProblem" @more="moreMine" />
-      <QueueList v-else-if="view === 'due'" :items="dueItems" :total="dueTotal" :busy="busy" :has-more="Boolean(dueNext)" :empty="dueScope === 'mine' ? '我的到期回访为空' : '团队到期回访为空'" @open="openProblem" @more="moreDue" />
-      <IntakePanel v-else-if="view === 'intake'" v-model:query="query" v-model:title="title" v-model:description="description" :device="device" :orders="deviceOrders" :busy="busy" @search="search" @create="create" @open="openProblem" />
-      <AccountPanel v-else-if="view === 'accounts' && account.role === 'admin'" :accounts="accounts" :busy="busy" :notice="accountNotice" :create-account="addAccount" :reset-password="resetAccountPassword" @toggle="toggleAccount" />
-      <PasswordPanel v-else-if="view === 'security'" :busy="busy" :notice="passwordNotice" :change-password="changeOwnPassword" />
-      <PersonalWorkbench
-        v-else-if="view === 'detail' && problem"
-        :problem="problem"
-        :draft="draft"
+        </header>
+        <QueueList
+          :items="dueItems"
+          :total="dueTotal"
+          :busy="busy"
+          :has-more="Boolean(dueNext)"
+          empty="当前没有到期回访工单"
+          @open="openProblem"
+          @more="moreDue"
+        />
+      </template>
+
+      <!-- 一级菜单 3：设备（单框 4 源并行 6 段档案 + 建单） -->
+      <DeviceLookupView
+        v-else-if="view === 'device'"
         :busy="busy"
-        :can-process="canProcess"
-        :can-handoff="canHandoff"
-        :handling-denied="handlingDenied"
-        :next-action="nextAction"
-        :refresh-note="refreshNote"
-        :assignees="assignees"
-        :evidence-labels="evidenceLabels"
-        :field-in-progress="fieldInProgress"
-        @back="backToList"
-        @intake="showNav('intake')"
-        @mine="showNav('mine')"
+        :initial-query="devicePrefill"
         @open="openProblem"
-        @claim="claim"
-        @save-note="saveNote"
-        @save-schedule="saveSchedule"
-        @begin-callback="beginCallback"
-        @save-outcome="saveOutcome"
-        @handoff="handoff"
-        @withdraw="withdrawDispatch"
-        @link="saveFieldLink"
-        @field-result="saveFieldResult"
-        @suspend="suspendTicket"
-        @quick-close="quickCloseTicket"
-        @escalate="escalateTicket"
-        @add-evidence="saveEvidence"
-        @assess="saveAssessment"
+        @created="onTicketCreated"
+      />
+
+      <!-- 一级菜单 4：知识库（一线/二线/服务商只读，隐藏审批阈值） -->
+      <KnowledgeSopView v-else-if="view === 'knowledge'" read-only />
+
+      <!-- 一级菜单 5：管理 → 4 个二级页面 -->
+      <section v-else-if="view === 'admin-customers'" class="panel">
+        <div class="fig2-card-head">
+          <h2>客户与项目档案</h2>
+          <button class="btn secondary" type="button" @click="loadCustomersList">刷新</button>
+        </div>
+        <p class="muted">本地模拟客户与项目主档（外部安装系统接入后自动同步）。</p>
+        <table v-if="customers.length" class="tickets" style="margin-top:12px;">
+          <thead>
+            <tr><th>客户ID</th><th>客户名称</th><th>联系人</th><th>电话</th><th>项目编号</th><th>项目名称</th><th>类型/SLA</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in customers" :key="c.id">
+              <td>{{ c.id }}</td><td>{{ c.name }}</td><td>{{ c.contactName }}</td><td>{{ c.phone }}</td>
+              <td>{{ c.projectCode }}</td><td>{{ c.projectName }}</td><td>{{ c.customerType }} · {{ c.slaMinutes }}分钟</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <KnowledgeSopView v-else-if="view === 'admin-sop'" :read-only="false" />
+
+      <section v-else-if="view === 'admin-reports'" class="panel">
+        <div class="fig2-card-head">
+          <h2>指标与报表（V1.1 4.11 六项月度指标）</h2>
+          <button class="btn secondary" type="button" @click="loadMonthlyReport">刷新指标</button>
+        </div>
+        <div v-if="monthlyReport" class="evidence-thumbs" style="margin-top:12px;">
+          <div class="evidence-thumb"><span class="thumb-badge">1. 工单总量 / 漏单率</span><strong>{{ monthlyReport.totalTickets }} 单</strong><small>漏单率：{{ monthlyReport.leakRateSimulated }}</small></div>
+          <div class="evidence-thumb"><span class="thumb-badge">2. 平均受理时长</span><strong>{{ monthlyReport.avgAcceptMinutesSimulated }} 分钟</strong><small>模拟节点均值</small></div>
+          <div class="evidence-thumb"><span class="thumb-badge">3. SLA 达成率</span><strong>{{ monthlyReport.slaPassRate }}</strong><small>当前超时：{{ monthlyReport.slaOverdueCount }} 单</small></div>
+          <div class="evidence-thumb"><span class="thumb-badge">4. 换装率 / 误判率</span><strong>{{ monthlyReport.replaceRate }}</strong><small>误判率：{{ monthlyReport.misjudgeRateSimulated }}</small></div>
+          <div class="evidence-thumb"><span class="thumb-badge">5. 妥协工单占比</span><strong>{{ monthlyReport.compromiseRate }}</strong><small>设备待补：{{ monthlyReport.devicePendingCount }} 单</small></div>
+          <div class="evidence-thumb"><span class="thumb-badge">6. 催单与升级投诉</span><strong>{{ monthlyReport.urgeAndComplaintSimulated }} 次</strong><small>含旁路升级记录</small></div>
+        </div>
+      </section>
+
+      <AccountPanel
+        v-else-if="view === 'admin-accounts' && account.role === 'admin'"
+        :accounts="accounts"
+        :busy="busy"
+        :notice="accountNotice"
+        :create-account="addAccount"
+        :reset-password="resetAccountPassword"
+        @toggle="toggleAccount"
+      />
+
+      <PasswordPanel
+        v-else-if="view === 'security'"
+        :busy="busy"
+        :notice="passwordNotice"
+        :change-password="changeOwnPassword"
       />
     </main>
+
+    <footer class="v11-footer">
+      <span>售后中台 · 让充电服务更简单</span>
+      <span>v1.1.0 · 本地模拟主档模式</span>
+    </footer>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import AccountPanel from './views/AccountPanel.vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BrandLogo from './components/BrandLogo.vue'
-import DispatchDashboard from './views/DispatchDashboard.vue'
-import IntakePanel from './views/IntakePanel.vue'
-import KnowledgeSopView from './views/KnowledgeSopView.vue'
 import LoginScreen from './components/LoginScreen.vue'
-import NavIcon from './components/NavIcon.vue'
+import QueueList from './components/QueueList.vue'
+import AccountPanel from './views/AccountPanel.vue'
+import DeviceLookupView from './views/DeviceLookupView.vue'
+import DispatchDashboard from './views/DispatchDashboard.vue'
+import KnowledgeSopView from './views/KnowledgeSopView.vue'
 import PasswordPanel from './views/PasswordPanel.vue'
 import PersonalWorkbench from './views/PersonalWorkbench.vue'
 import ProblemBoard from './views/ProblemBoard.vue'
-import QueueList from './components/QueueList.vue'
 import { emptyFilters, useBoardQueues } from './composables/useBoardQueues'
 import { useProblemDraft } from './composables/useProblemDraft'
-import { initial, orderNumber, summaryScope } from './status'
-import { currentAccount, login, logout, addEvidence, addFollowup, assessProblem, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, escalateProblem, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, quickCloseProblem, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, setAccountEnabled, suspendProblem, withdrawField } from './api/workbench'
+import { initial, orderNumber, roleLabel } from './status'
+import {
+  acceptProblemV11, addEvidence, addFollowup, assessProblem, assignProblemV11, assignableAccounts,
+  bindProblemDevice, changePassword, claimProblem, createAccount, currentAccount, dispatchProblemV11,
+  escalateProblem, fetchMonthlyReport, finishCallback, forceDistributeV11, handoffProblem,
+  linkFieldOrder, listAccounts, listCustomers, loadProblem, login, logout, quickCloseProblem,
+  recordFieldResult, reopenProblemV11, resetAccountPassword as resetAccountPasswordApi,
+  scheduleCallback, setAccountEnabled, suspendProblem, triggerLezhuangCallback, updateOwnDuty, withdrawField
+} from './api/workbench'
 
 const REMEMBER_KEY = 'songguo-workbench-username'
-const AGENT_STATUS_KEY = 'songguo-agent-status'
 const pageSize = 10
-const agentStatus = ref(localStorage.getItem(AGENT_STATUS_KEY) || 'ready')
-function persistAgentStatus() {
-  localStorage.setItem(AGENT_STATUS_KEY, agentStatus.value)
-}
-const query = ref('')
-const title = ref('')
-const description = ref('')
-const device = ref(null)
-const problem = ref(null)
-const busy = ref(false)
-const error = ref('')
-const errorSummary = ref(null)
-const loginPanel = ref(null)
-const deviceOrders = ref([])
+
 const account = ref(null)
 const authReady = ref(false)
 const username = ref('')
 const password = ref('')
 const rememberAccount = ref(false)
-const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
+const agentStatus = ref('ready')
+
+const problem = ref(null)
+const busy = ref(false)
+const error = ref('')
+const errorSummary = ref(null)
+const loginPanel = ref(null)
+const conflict = ref(false)
 const accounts = ref([])
 const assignees = ref([])
+const customers = ref([])
+const monthlyReport = ref(null)
 const accountNotice = ref('')
-const conflict = ref(false)
 const passwordNotice = ref('')
-const view = ref('board')
-const returnView = ref('board')
-const detailFocus = ref('')
-const navOpen = ref(false)
-const sidebarExpanded = ref(false)
-const wide = ref(true)
-let mediaQuery
+const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
+
+const view = ref('tickets')
+const ticketTab = ref('pool')
+const devicePrefill = ref('')
+const adminMenuOpen = ref(false)
+const userMenuOpen = ref(false)
 
 const {
   boardItems, boardTotal, boardPage, boardHasNext, boardCategories, boardFilters, boardCursors, summary,
@@ -203,15 +384,11 @@ const {
   loadBoard, loadDue, loadMine, refreshQueues: refreshBoardQueues, ensureFreshQueue, resetQueues
 } = useBoardQueues(pageSize)
 
-function ownerLabel(value) {
-  return !value || value === 'early' ? '无主' : value
-}
-function unowned(item) {
-  return !item?.owner || item.owner === 'early'
-}
+function ownerLabel(value) { return !value || value === 'early' ? '无主' : value }
+function unowned(item) { return !item?.owner || item.owner === 'early' }
 function canHandle(current) {
-  if (!current || current.state === 'resolved') return false
-  if (account.value?.role === 'admin') return true
+  if (!current || ['resolved', 'closed', 'cancelled'].includes(current.state)) return false
+  if (['admin', 'dispatcher', 'quality'].includes(account.value?.role)) return true
   if (unowned(current)) return false
   return account.value?.username === current.owner
 }
@@ -220,42 +397,57 @@ const {
   draft, refreshNote, beginCallback, snapshotDraft, fillFromServer, restoreDraft, resetDraft
 } = useProblemDraft({ canHandle, unowned, account, assignees })
 
-const pageTitle = computed(() => {
-  if (view.value === 'board' && boardFilters.value.bucket === 'unclaimed') return '待认领池'
-  return { dispatch: '统一工单池 · 调度大屏', knowledge: '知识库与 SOP 管理', board: '问题单总表', due: '到期回访', mine: '我的待办', intake: '查桩与建单', accounts: '坐席与账号', security: '安全与改密' }[view.value] || '问题单总表'
+const canSeeInternal = computed(() => !['provider', 'oem'].includes(account.value?.role))
+const canSeeAdminMenu = computed(() => ['admin', 'dispatcher', 'quality'].includes(account.value?.role))
+const navGroup = computed(() => {
+  if (view.value === 'detail') return 'workbench'
+  if (view.value === 'tickets' || view.value === 'due') return 'tickets'
+  if (view.value === 'device') return 'device'
+  if (view.value === 'knowledge') return 'knowledge'
+  if (view.value.startsWith('admin-')) return 'admin'
+  return ''
 })
-const pageLede = computed(() => {
-  if (view.value === 'board' && boardFilters.value.bucket === 'unclaimed') return '负责人为无主的问题单。认领成功后才能继续处理。'
-  return {
-    dispatch: '实时查看工单池、坐席在岗状态、渠道分布、超时趋势与本月排班（未接入项使用模拟数据）',
-    knowledge: '按故障分类维护两段式 SOP、必传证据要求、A/B/C 分级与换装自动审批规则（配置演示）',
-    board: '统一管理售后受理、认领流转与回访闭环',
-    due: dueScope.value === 'mine' ? '我负责或由我回访、且已到时间的问题单' : '团队里已到回访时间的问题单',
-    mine: '当前账号负责且未结案的问题单',
-    intake: '按桩编码或手机号查询设备，并受理新的问题单',
-    accounts: '创建账号、启用或停用，以及重置密码',
-    security: '修改当前账号密码。修改后当前会话保持登录'
-  }[view.value] || ''
+const dueCount = computed(() => summary.value ? Number(summary.value.due || 0) : 0)
+const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress', 'dispatched', 'accepted', 'arrived'].includes(item.state)))
+const nextAction = computed(() => {
+  const cur = problem.value
+  if (!cur) return ''
+  if (['closed', 'resolved', 'cancelled'].includes(cur.state)) return '终态，不再写入'
+  if (cur.devicePending) return '请先补齐设备 SN'
+  if (cur.state === 'pending_accept') return '请核对完工回传与旧件并验收闭环'
+  if (cur.state === 'pending_callback') return '等待智享乐装回传'
+  return '处理排查、记录证据或派单'
 })
-const unclaimedCount = computed(() => summary.value ? Number(summary.value.states?.unclaimed || 0) : null)
-const dueCount = computed(() => summary.value ? Number(summary.value.due || 0) : null)
-const scopeText = computed(() => summaryScope(summary.value))
+const canProcess = computed(() => canHandle(problem.value))
+const handlingDenied = computed(() => {
+  const cur = problem.value
+  if (!cur || ['resolved', 'closed', 'cancelled'].includes(cur.state) || canHandle(cur)) return ''
+  if (unowned(cur)) return '该工单处于待分配状态，请先点击「承接处理」后再操作。'
+  return '当前工单由 ' + ownerLabel(cur.owner) + ' 负责，当前账号无权直接写入。'
+})
+const canHandoff = computed(() => Boolean(problem.value) && !['resolved', 'closed', 'cancelled'].includes(problem.value.state))
+
+function closeMenus() {
+  adminMenuOpen.value = false
+  userMenuOpen.value = false
+}
+
+function defaultTicketTabForRole(role) {
+  if (role === 'dispatcher') return 'dispatch'
+  if (role === 'engineer' || role === 'provider') return 'mine'
+  return 'pool'
+}
 
 function clearAccount() {
   account.value = null
   problem.value = null
-  device.value = null
-  deviceOrders.value = []
-  query.value = ''
-  title.value = ''
-  description.value = ''
   resetQueues()
   resetDraft()
   passwordNotice.value = ''
   accountNotice.value = ''
   conflict.value = false
-  view.value = 'board'
-  navOpen.value = false
+  view.value = 'tickets'
+  closeMenus()
 }
 
 function syncUrl() {
@@ -266,32 +458,17 @@ function syncUrl() {
   const params = new URLSearchParams()
   if (view.value === 'detail' && problem.value) {
     params.set('problem', orderNumber(problem.value))
-    if (returnView.value && returnView.value !== 'board') params.set('from', returnView.value)
-    if (returnView.value === 'board' && boardFilters.value.bucket) params.set('bucket', boardFilters.value.bucket)
-  } else if (view.value === 'board') {
-    if (boardFilters.value.bucket) params.set('bucket', boardFilters.value.bucket)
-  } else if (view.value === 'due') {
-    params.set('view', 'due')
-    if (dueScope.value === 'mine') params.set('scope', 'mine')
-  } else if (view.value && view.value !== 'board') {
+  } else {
     params.set('view', view.value)
+    if (view.value === 'tickets') params.set('tab', ticketTab.value)
   }
-  const queryText = params.toString()
-  history.replaceState(null, '', queryText ? '?' + queryText : location.pathname)
-}
-
-function currentNav(name) {
-  const onDetail = view.value === 'detail'
-  const base = onDetail ? returnView.value : view.value
-  const bucket = boardFilters.value.bucket
-  if (name === 'pool') return base === 'board' && bucket === 'unclaimed'
-  if (name === 'board') return base === 'board' && bucket !== 'unclaimed'
-  return base === name
+  history.replaceState(null, '', '?' + params.toString())
 }
 
 async function prepareWorkspace() {
-  await loadAccounts()
-  assignees.value = await assignableAccounts()
+  agentStatus.value = account.value?.dutyStatus || 'ready'
+  ticketTab.value = defaultTicketTabForRole(account.value?.role)
+  await Promise.all([loadAccounts(), assignableAccounts().then(res => { assignees.value = res })])
   boardFilters.value = emptyFilters()
   boardCursors.value = [null]
   boardPage.value = 0
@@ -302,29 +479,27 @@ async function prepareWorkspace() {
 async function restoreRoute() {
   const params = new URLSearchParams(location.search)
   const problemId = params.get('problem')
-  const views = ['dispatch', 'knowledge', 'board', 'due', 'mine', 'intake', 'accounts', 'security']
   if (problemId) {
-    const from = params.get('from')
-    returnView.value = views.includes(from) ? from : 'board'
-    if (params.get('bucket')) boardFilters.value = { ...emptyFilters(), bucket: params.get('bucket') }
     await showProblem(problemId)
     return
   }
-  const requested = params.get('view')
-  if (requested === 'accounts' && account.value?.role !== 'admin') view.value = 'board'
-  else if (views.includes(requested)) view.value = requested
-  else view.value = 'board'
-  if (params.get('bucket') && view.value === 'board') {
-    boardFilters.value = { ...emptyFilters(), bucket: params.get('bucket') }
-    boardPage.value = 0
-    boardCursors.value = [null]
-    await loadBoard()
+  const reqView = params.get('view')
+  const validViews = ['tickets', 'device', 'knowledge', 'due', 'security', 'admin-customers', 'admin-sop', 'admin-reports', 'admin-accounts']
+  if (reqView && validViews.includes(reqView)) {
+    view.value = reqView
+  } else {
+    view.value = 'tickets'
   }
-  if (view.value === 'due') {
-    dueScope.value = params.get('scope') === 'mine' ? 'mine' : 'team'
-    await loadDue(false)
+  if (view.value === 'tickets') {
+    const t = params.get('tab')
+    if (['dispatch', 'pool', 'mine'].includes(t)) ticketTab.value = t
+    if (ticketTab.value === 'mine') await loadMine(false)
+  } else if (view.value === 'admin-customers') {
+    await loadCustomersList()
+  } else if (view.value === 'admin-reports') {
+    await loadMonthlyReport()
   }
-  if (view.value === 'mine') await loadMine(false)
+  syncUrl()
 }
 
 function signIn() {
@@ -350,149 +525,78 @@ function signOut() {
   })
 }
 
-function onMedia(event) {
-  wide.value = event.matches
-  if (wide.value) navOpen.value = false
-}
-const whoLabel = ref(null)
-const nameOverflows = ref(false)
-const nameTip = ref(false)
-const namePinned = ref(false)
-let nameObserver = null
-let nameHideTimer = 0
-
-function measureName() {
-  const el = whoLabel.value
-  if (!el) {
-    nameOverflows.value = false
-    return
-  }
-  const overflow = el.scrollWidth > el.clientWidth + 1
-  nameOverflows.value = overflow
-  if (!overflow) hideNameTip()
-}
-
-function bindNameObserver() {
-  if (typeof ResizeObserver === 'undefined') return
-  if (!nameObserver) nameObserver = new ResizeObserver(() => measureName())
-  nameObserver.disconnect()
-  if (whoLabel.value) {
-    nameObserver.observe(whoLabel.value)
-    measureName()
-  }
-}
-
-function openNameTip() {
-  if (!nameOverflows.value) return
-  window.clearTimeout(nameHideTimer)
-  nameTip.value = true
-}
-
-function scheduleHideNameTip() {
-  if (namePinned.value) return
-  window.clearTimeout(nameHideTimer)
-  nameHideTimer = window.setTimeout(() => {
-    if (!namePinned.value) nameTip.value = false
-  }, 180)
-}
-
-function toggleNameTip() {
-  if (!nameOverflows.value) return
-  namePinned.value = !namePinned.value
-  nameTip.value = namePinned.value
-}
-
-function hideNameTip(event) {
-  if (event && event.type === 'blur' && whoLabel.value && document.activeElement === whoLabel.value) return
-  namePinned.value = false
-  nameTip.value = false
-  window.clearTimeout(nameHideTimer)
-}
-
-function onKey(event) {
-  if (event.key !== 'Escape') return
-  if (nameTip.value) {
-    hideNameTip()
-    return
-  }
-  navOpen.value = false
-}
-
-onMounted(async () => {
-  const saved = localStorage.getItem(REMEMBER_KEY)
-  if (saved) {
-    username.value = saved
-    rememberAccount.value = true
-  }
-  mediaQuery = window.matchMedia('(min-width: 960px)')
-  wide.value = mediaQuery.matches
-  mediaQuery.addEventListener('change', onMedia)
-  window.addEventListener('keydown', onKey)
-  window.addEventListener('workbench-session-expired', clearAccount)
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => measureName())
-  try {
-    account.value = await currentAccount()
-  } catch (failure) {
-    return
-  } finally {
-    authReady.value = true
-  }
-  if (account.value) await run(prepareWorkspace)
-})
-watch(account, async () => {
-  await nextTick()
-  bindNameObserver()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('workbench-session-expired', clearAccount)
-  window.removeEventListener('keydown', onKey)
-  if (mediaQuery) mediaQuery.removeEventListener('change', onMedia)
-  if (nameObserver) nameObserver.disconnect()
-  window.clearTimeout(nameHideTimer)
-})
-
-const fieldInProgress = computed(() => problem.value?.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state)))
-const nextAction = computed(() => {
-  const current = problem.value
-  if (!current) return ''
-  if (current.state === 'resolved') return '已结案，不再写入'
-  if (current.state === 'field' && fieldInProgress.value) return '登记现场回执'
-  if (current.state === 'field') return '关联智享乐装现场单'
-  if (current.pendingFollowup?.nextStep) return current.pendingFollowup.nextStep
-  if (current.state === 'verify' || current.resumeState === 'verify') return '安排回访或提交恢复依据'
-  return '记录跟进或安排回访'
-})
-
-const canProcess = computed(() => canHandle(problem.value))
-const handlingDenied = computed(() => {
-  const current = problem.value
-  if (!current || current.state === 'resolved' || canHandle(current)) return ''
-  if (unowned(current)) return '这张问题单还没有负责人。请先认领，认领成功后才能保存跟进、安排回访、撤回待派单或登记现场单。'
-  return '这张问题单由 ' + ownerLabel(current.owner) + ' 负责。当前账号无权处理，跟进、回访、转交、撤回和现场单都不会被保存。需要接手时，请由负责人转交，或由管理员处理。'
-})
-const canHandoff = computed(() => problem.value && problem.value.state !== 'resolved' && !unowned(problem.value)
-  && (account.value?.role === 'admin' || account.value?.username === problem.value.owner))
-
-function refreshQueues() {
-  return refreshBoardQueues(returnView.value)
-}
-
-function saveFieldLink(number) {
+function saveDutyStatus() {
   return run(async () => {
-    await linkFieldOrder(problem.value.id, number, problem.value.version)
-    draft.fieldNumber = ''
-    await showProblem(problem.value.id)
-    await refreshQueues()
-  }, { conflict: true })
+    await updateOwnDuty(agentStatus.value)
+    assignees.value = await assignableAccounts()
+  })
 }
-function saveFieldResult(form) {
-  return run(async () => {
-    await recordFieldResult(problem.value.id, { ...form, expectedVersion: problem.value.version })
-    draft.fieldReceipt = ''
-    await showProblem(problem.value.id)
-    await refreshQueues()
-  }, { conflict: true })
+
+function openWorkbenchTab() {
+  closeMenus()
+  if (problem.value) {
+    view.value = 'detail'
+    syncUrl()
+    return
+  }
+  if (boardItems.value.length) {
+    openProblem(boardItems.value[0].id)
+    return
+  }
+  view.value = 'detail'
+  syncUrl()
+}
+
+function openTicketsRoot() {
+  closeMenus()
+  view.value = 'tickets'
+  syncUrl()
+  run(async () => {
+    await loadBoard()
+    if (ticketTab.value === 'mine') await loadMine(false)
+  })
+}
+
+function switchTicketTab(tab) {
+  ticketTab.value = tab
+  syncUrl()
+  if (tab === 'mine') run(() => loadMine(false))
+  else run(() => loadBoard())
+}
+
+function openPoolWithBucket(bucket) {
+  view.value = 'tickets'
+  ticketTab.value = 'pool'
+  boardFilters.value = { ...emptyFilters(), bucket: bucket || '' }
+  boardCursors.value = [null]
+  boardPage.value = 0
+  syncUrl()
+  return run(loadBoard)
+}
+
+function showNav(next) {
+  closeMenus()
+  view.value = next
+  syncUrl()
+}
+
+function showAdmin(next) {
+  closeMenus()
+  view.value = next
+  syncUrl()
+  if (next === 'admin-customers') run(loadCustomersList)
+  else if (next === 'admin-reports') run(loadMonthlyReport)
+  else if (next === 'admin-accounts') run(async () => { await loadAccounts(); assignees.value = await assignableAccounts() })
+}
+
+function jumpToDevice(sn) {
+  devicePrefill.value = sn || ''
+  showNav('device')
+}
+
+function onTicketCreated(id) {
+  openProblem(id)
+  refreshQueues()
 }
 
 async function showProblem(id, options) {
@@ -506,40 +610,30 @@ async function showProblem(id, options) {
   else fillFromServer(problem.value)
   syncUrl()
 }
+
+function openProblem(id) {
+  closeMenus()
+  return run(() => showProblem(id))
+}
+
 function refreshAfterConflict() {
   return run(async () => {
     conflict.value = false
     await showProblem(problem.value.id, { preserveDraft: true })
   })
 }
-function openProblem(id, focus) {
-  if (view.value !== 'detail') returnView.value = view.value
-  detailFocus.value = typeof focus === 'string' ? focus : ''
-  navOpen.value = false
-  return run(async () => {
-    await showProblem(id)
-    await nextTick()
-    const target = detailFocus.value && document.getElementById('action-' + detailFocus.value)
-    if (target) target.scrollIntoView({ block: 'nearest' })
-  })
-}
-function backToList() {
-  view.value = returnView.value || 'board'
-  problem.value = null
-  refreshNote.value = ''
-  navOpen.value = false
-  syncUrl()
-  run(() => ensureFreshQueue(view.value))
+
+function refreshQueues() {
+  return refreshBoardQueues(ticketTab.value === 'mine' ? 'mine' : 'board')
 }
 
 function searchBoard(filters) {
-  view.value = 'board'
   boardFilters.value = filters
   boardCursors.value = [null]
   boardPage.value = 0
-  syncUrl()
   return run(loadBoard)
 }
+
 function goToBoardPage(target) {
   return run(async () => {
     const last = Math.max(0, Math.ceil(boardTotal.value / pageSize) - 1)
@@ -556,62 +650,59 @@ function goToBoardPage(target) {
     }
   })
 }
-function openBoard(bucket) {
-  problem.value = null
-  refreshNote.value = ''
-  view.value = 'board'
-  boardFilters.value = { ...emptyFilters(), bucket: bucket || '' }
-  boardCursors.value = [null]
-  boardPage.value = 0
-  navOpen.value = false
-  syncUrl()
-  return run(loadBoard)
-}
+
 function openDue(scope) {
-  problem.value = null
-  refreshNote.value = ''
+  closeMenus()
   dueScope.value = scope === 'mine' ? 'mine' : 'team'
-  dueNext.value = null
   view.value = 'due'
-  navOpen.value = false
   syncUrl()
   return run(() => loadDue(false))
 }
+
 function moreDue() { return run(() => loadDue(true)) }
 function moreMine() { return run(() => loadMine(true)) }
-function showNav(next) {
-  navOpen.value = false
-  problem.value = null
-  refreshNote.value = ''
-  if (next === 'board') return openBoard('')
-  if (next === 'pool') return openBoard('unclaimed')
-  if (next === 'due') return openDue(dueScope.value || 'team')
-  if (next === 'mine') {
-    view.value = 'mine'
-    syncUrl()
-    return run(() => loadMine(false))
-  }
-  if (next === 'accounts' && account.value?.role !== 'admin') return showNav('board')
-  view.value = next
-  syncUrl()
-  if (next === 'accounts') return run(async () => { await loadAccounts(); assignees.value = await assignableAccounts() })
-  return undefined
+
+async function loadAccounts() {
+  if (account.value?.role !== 'admin') { accounts.value = []; return }
+  accounts.value = await listAccounts()
+}
+async function loadCustomersList() { customers.value = await listCustomers() }
+async function loadMonthlyReport() { monthlyReport.value = await fetchMonthlyReport() }
+
+function addAccount(form) {
+  accountNotice.value = ''
+  return run(async () => {
+    await createAccount(form)
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+    accountNotice.value = '账号已创建，列表已刷新'
+  })
+}
+function toggleAccount(item) {
+  return run(async () => {
+    await setAccountEnabled(item.username, !item.enabled)
+    await loadAccounts()
+    assignees.value = await assignableAccounts()
+  })
+}
+function changeOwnPassword(form) {
+  return run(async () => {
+    await changePassword(form)
+    passwordNotice.value = '密码已更新，当前会话保持登录。'
+  })
+}
+function resetAccountPassword(form) {
+  return run(async () => {
+    await resetAccountPasswordApi(form.username, form.password)
+    accountNotice.value = '已重置该账号密码。'
+    await loadAccounts()
+  })
 }
 
-function withdrawDispatch() {
+function claim() { return assignV11('') }
+function claimRow(item) {
   return run(async () => {
-    const id = problem.value.id
-    await withdrawField(id, draft.withdrawReason, problem.value.version)
-    draft.withdrawReason = ''
-    await showProblem(id)
-    await refreshQueues()
-  }, { conflict: true })
-}
-function claim() {
-  return run(async () => {
-    const id = problem.value.id
-    await claimProblem(id, problem.value.version)
-    await showProblem(id)
+    await assignProblemV11(item.id, '', item.version)
     await refreshQueues()
   }, { conflict: true })
 }
@@ -620,15 +711,66 @@ function claimFromDispatch(target) {
   if (item) return claimRow(item)
   return undefined
 }
-function claimRow(item) {
+function runForceDistribute() {
   return run(async () => {
-    try {
-      await claimProblem(item.id, item.version)
-    } catch (failure) {
-      await loadBoard()
-      throw failure
-    }
-    if (problem.value && problem.value.id === item.id) await showProblem(item.id)
+    await forceDistributeV11()
+    await refreshQueues()
+  })
+}
+
+function bindDevice(sn) {
+  return run(async () => {
+    const id = problem.value.id
+    await bindProblemDevice(id, sn, problem.value.version)
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function assignV11(target) {
+  return run(async () => {
+    const id = problem.value.id
+    await assignProblemV11(id, target, problem.value.version)
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function dispatchV11(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await dispatchProblemV11(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function lzCallbackV11(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await triggerLezhuangCallback(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function acceptV11(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await acceptProblemV11(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function reopenV11(reason) {
+  return run(async () => {
+    const created = await reopenProblemV11(problem.value.id, reason)
+    await showProblem(created.id)
+    await refreshQueues()
+  })
+}
+function saveNote() {
+  return run(async () => {
+    const id = problem.value.id
+    await addFollowup(id, draft.note, problem.value.version)
+    draft.note = ''
+    await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
 }
@@ -640,29 +782,6 @@ function handoff() {
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
-}
-async function loadAccounts() {
-  if (account.value?.role !== 'admin') {
-    accounts.value = []
-    return
-  }
-  accounts.value = await listAccounts()
-}
-function addAccount(form) {
-  accountNotice.value = ''
-  return run(async () => {
-    await createAccount({ username: form.username, password: form.password, role: form.role })
-    await loadAccounts()
-    assignees.value = await assignableAccounts()
-    accountNotice.value = '账号已创建，账号列表和转交候选已更新'
-  })
-}
-function toggleAccount(item) {
-  return run(async () => {
-    await setAccountEnabled(item.username, !item.enabled)
-    await loadAccounts()
-    assignees.value = await assignableAccounts()
-  })
 }
 function saveSchedule() {
   return run(async () => {
@@ -680,66 +799,32 @@ function saveOutcome() {
     await refreshQueues()
   }, { conflict: true })
 }
-async function run(action, options) {
-  if (busy.value) return false
-  busy.value = true
-  error.value = ''
-  conflict.value = false
-  try {
-    await action()
-    return true
-  } catch (failure) {
-    error.value = failure.message
-    conflict.value = Boolean(options && options.conflict && failure.status === 409 && problem.value)
-    await nextTick()
-    if (loginPanel.value && loginPanel.value.focusError) loginPanel.value.focusError()
-    else if (errorSummary.value) errorSummary.value.focus()
-    return false
-  } finally {
-    busy.value = false
-  }
-}
-function changeOwnPassword(form) {
+function withdrawDispatch() {
   return run(async () => {
-    await changePassword(form)
-    passwordNotice.value = '密码已更新。当前会话保持登录，其他设备需要用新密码重新登录。'
-  })
-}
-function resetAccountPassword(form) {
-  return run(async () => {
-    await resetAccountPasswordApi(form.username, form.password)
-    accountNotice.value = form.username === account.value?.username
-      ? '已重置自己的密码。当前会话保持登录，其他设备需要用新密码重新登录。'
-      : '已重置该账号的密码。该账号的旧会话会在下次请求时失效。'
-    await loadAccounts()
-  })
-}
-function search() {
-  return run(async () => {
-    device.value = null
-    deviceOrders.value = []
-    device.value = await lookupDevice(query.value.trim())
-    deviceOrders.value = await findProblems(device.value.device)
-    title.value = ''
-    description.value = ''
-  })
-}
-function create(meta) {
-  return run(async () => {
-    const payload = {
-      device: device.value.device,
-      title: title.value.trim(),
-      description: description.value.trim(),
-      channel: meta?.channel || '400',
-      category: meta?.category || '充电故障',
-      faultOccurredAt: meta?.faultOccurredAt || null
-    }
-    const created = await createProblem(payload)
-    returnView.value = 'intake'
-    view.value = 'detail'
-    await showProblem(created.id)
+    const id = problem.value.id
+    await withdrawField(id, draft.withdrawReason, problem.value.version)
+    draft.withdrawReason = ''
+    await showProblem(id)
     await refreshQueues()
-  })
+  }, { conflict: true })
+}
+function saveFieldLink(number) {
+  return run(async () => {
+    const id = problem.value.id
+    await linkFieldOrder(id, number, problem.value.version)
+    draft.fieldNumber = ''
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function saveFieldResult(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await recordFieldResult(id, { ...form, expectedVersion: problem.value.version })
+    draft.fieldReceipt = ''
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
 }
 function suspendTicket(form) {
   return run(async () => {
@@ -781,13 +866,45 @@ function saveAssessment(form) {
     await refreshQueues()
   }, { conflict: true })
 }
-function saveNote() {
-  return run(async () => {
-    const id = problem.value.id
-    await addFollowup(id, draft.note, problem.value.version)
-    draft.note = ''
-    await showProblem(id)
-    await refreshQueues()
-  }, { conflict: true })
+
+async function run(action, options) {
+  if (busy.value) return false
+  busy.value = true
+  error.value = ''
+  conflict.value = false
+  try {
+    await action()
+    return true
+  } catch (failure) {
+    error.value = failure.message
+    conflict.value = Boolean(options && options.conflict && failure.status === 409 && problem.value)
+    await nextTick()
+    if (loginPanel.value && loginPanel.value.focusError) loginPanel.value.focusError()
+    else if (errorSummary.value) errorSummary.value.focus()
+    return false
+  } finally {
+    busy.value = false
+  }
 }
+
+onMounted(async () => {
+  const saved = localStorage.getItem(REMEMBER_KEY)
+  if (saved) {
+    username.value = saved
+    rememberAccount.value = true
+  }
+  window.addEventListener('workbench-session-expired', clearAccount)
+  try {
+    account.value = await currentAccount()
+  } catch (ignore) {
+    return
+  } finally {
+    authReady.value = true
+  }
+  if (account.value) await run(prepareWorkspace)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('workbench-session-expired', clearAccount)
+})
 </script>

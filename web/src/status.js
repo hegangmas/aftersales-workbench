@@ -3,6 +3,14 @@ const EXTRA_BUCKETS = ['triage', 'waiting', 'answered', 'referred']
 
 export const BUCKET_LABELS = {
   '': '全部',
+  pending_assign: '待分配',
+  processing: '处理中',
+  suspended: '挂起',
+  pending_callback: '待回传',
+  pending_accept: '待验收',
+  closed: '已闭环',
+  cancelled: '已取消',
+  device_pending: '设备待补',
   unclaimed: '待认领',
   open: '处理中',
   triage: '待排查',
@@ -40,6 +48,13 @@ export function displayStatus(item) {
   if (item.state === 'field' && !active) return { id: 'fieldPending', label: '待派单', tone: 'dispatch' }
   if (item.state === 'field' && active) return { id: 'fieldActive', label: '现场处理中', tone: 'onsite' }
   const map = {
+    pending_assign: ['pending_assign', '待分配', 'waiting'],
+    processing: ['processing', '处理中', 'processing'],
+    suspended: ['suspended', '挂起', 'follow'],
+    pending_callback: ['pending_callback', '待回传', 'onsite'],
+    pending_accept: ['pending_accept', '待验收', 'verify'],
+    closed: ['closed', '已闭环', 'closed'],
+    cancelled: ['cancelled', '已取消', 'closed'],
     open: ['open', '处理中', 'processing'],
     triage: ['triage', '待排查', 'triage'],
     waiting: ['waiting', '待回访', 'follow'],
@@ -186,7 +201,21 @@ export function dateLabel(value) {
 
 export function orderNumber(item) {
   if (!item) return ''
+  if (item.ticketNo) return item.ticketNo
   return item.displayNumber ? 'AS-' + item.displayNumber : item.id
+}
+
+export const ROLE_LABELS = {
+  admin: '管理员',
+  dispatcher: '调度',
+  operator: '坐席',
+  engineer: '工程师',
+  quality: '质量/二线',
+  provider: '服务商',
+  oem: '车企客户'
+}
+export function roleLabel(role) {
+  return ROLE_LABELS[role] || role || '坐席'
 }
 
 export function summaryScope(summary) {

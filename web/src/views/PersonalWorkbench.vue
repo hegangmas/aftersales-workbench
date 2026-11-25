@@ -7,319 +7,299 @@
     :can-process="canProcess"
     @link="$emit('link', $event)"
     @field-result="$emit('field-result', $event)"
+    @dispatch-v11="$emit('dispatch-v11', $event)"
+    @lz-callback="$emit('lz-callback', $event)"
     @back="dispatchMode = false"
   />
-  <article v-else class="personal" :class="{ 'mobile-compact': mobileCompact }">
-    <div v-if="device && device.simulatedCall" class="call-strip">
-      <span><strong>400 来电弹屏（模拟）</strong> · {{ device.simulatedCall.caller }}</span>
-      <span>通话 {{ device.simulatedCall.duration }} · {{ device.simulatedCall.recordingStatus }}</span>
+  <article v-else class="fig2-page" :class="{ 'mobile-compact': mobileCompact }">
+    <div v-if="callBarOpen" class="fig2-callbar">
+      <div class="callbar-left">
+        <span class="call-dot">📞</span>
+        <strong>来电中 {{ maskedCaller }}</strong>
+        <span>· 通话时长 {{ device?.simulatedCall?.duration || '00:22' }} · {{ device?.simulatedCall?.recordingStatus || '录音中' }}</span>
+      </div>
+      <div class="callbar-right">
+        <span class="wave-icon" aria-hidden="true">ılılı</span>
+        <button class="icon-close" type="button" aria-label="关闭来电条" @click="callBarOpen = false">×</button>
+      </div>
     </div>
 
-    <header class="personal-head">
-      <div>
-        <button class="link" type="button" @click="$emit('back')">← 返回列表</button>
-        <h1>售后个人工作台</h1>
-        <p class="muted">集中查看设备档案、SOP 证据判定，并完成跟进、挂起回池、快通道、派单与转交</p>
-      </div>
-      <div class="personal-head-actions">
-        <div class="mobile-density" role="group" aria-label="移动端信息密度">
-          <button type="button" :aria-pressed="mobileCompact" @click="mobileCompact = true">主要信息</button>
-          <button type="button" :aria-pressed="!mobileCompact" @click="mobileCompact = false">全部信息</button>
-        </div>
-        <button class="btn secondary" type="button" @click="$emit('intake')">查桩与建单</button>
-        <button class="btn secondary" type="button" @click="$emit('mine')">我的待办</button>
-      </div>
-    </header>
-
-    <div class="case-bar">
-      <strong>{{ number }} · {{ problem.title }}</strong>
-      <span class="status" :class="status.tone"><i></i>{{ status.label }}</span>
-      <span v-if="problem.channel" class="mini-tag info">{{ channelLabel(problem.channel) }}</span>
-      <span v-if="problem.grade" class="mini-tag" :class="problem.grade === 'C' ? 'warn' : 'info'">
-        {{ problem.grade }}级<template v-if="problem.disposalType"> · {{ disposalLabel(problem.disposalType) }}</template>
-      </span>
-      <span v-if="problem.suspendReason && problem.state === 'waiting'" class="mini-tag warn">{{ suspendLabel(problem.suspendReason) }}</span>
-      <span v-if="problem.escalationLevel && problem.escalationLevel !== 'none'" class="mini-tag danger">{{ escalationLabel(problem.escalationLevel) }}</span>
-      <span v-if="isCompromise" class="mini-tag danger">妥协工单</span>
-      <span v-if="sla" class="mini-tag" :class="sla.overdue ? 'danger' : 'muted'">{{ sla.text }}</span>
-      <span>负责人：{{ ownerText }}</span>
-      <span>下一步：{{ nextAction }}</span>
-      <span v-if="problem.pendingFollowup" class="pending">{{ problem.pendingFollowup.overdue ? '回访已到期' : '待回访' }}</span>
+    <div v-if="problem.devicePending" class="dup-alert" style="margin-top:0;margin-bottom:12px;">
+      <strong>设备信息待补（未补齐前禁止派单、禁止换装）</strong>
+      <form v-if="canProcess" class="inline-bind" @submit.prevent="submitBind">
+        <input v-model="bindSn" class="text-input" placeholder="输入已核实的桩SN（如 CD26080101 / SIM-AC-001）" required>
+        <button class="btn primary" type="submit" :disabled="busy || !bindSn.trim()">补齐设备档案</button>
+      </form>
     </div>
+
     <p v-if="refreshNote" role="status" class="stage-note">{{ refreshNote }}</p>
+    <p v-if="handlingDenied" role="status" class="permission-note">{{ handlingDenied }}</p>
 
-    <div class="personal-grid">
-      <section class="panel">
-        <h2>客户与设备档案</h2>
-        <p class="muted">客户、MES、质保与 400 为模拟数据（外部系统未接入）</p>
-        <dl class="personal-facts">
-          <dt>桩编码</dt><dd>{{ problem.device || '未关联' }}</dd>
-          <dt>问题分类</dt><dd>{{ kindText }}<span v-if="problem.category"> · {{ problem.category }}</span></dd>
-          <dt>客户与地址</dt><dd>{{ device?.customerName || '李先生（模拟）' }} · {{ device?.siteAddress || '合肥市滨湖新区（模拟）' }}</dd>
-          <dt>设备型号</dt><dd>{{ device?.model || '7kW 交流桩（模拟）' }}</dd>
-          <dt>在线 / 状态</dt><dd>{{ device?.onlineStatus || '在线（模拟）' }} · {{ device?.currentStatus || '告警中（模拟）' }}</dd>
-          <dt class="detail-extra">出厂 / 质保</dt>
-          <dd class="detail-extra">{{ device?.manufacturedAt || '2025-06-18（MES 模拟）' }} · {{ device?.warrantyStatus || '在保（模拟）' }}</dd>
-          <dt class="detail-extra">程序 / SIM</dt>
-          <dd class="detail-extra">{{ device?.firmwareVersion || 'v2.4.18（模拟）' }} · {{ device?.simExpiresAt || '2027-05-31（模拟）' }}</dd>
-          <dt>设备数据</dt>
+    <div class="mobile-density-bar">
+      <button class="link" type="button" @click="$emit('back')">← 返回工单</button>
+      <div class="mobile-density" role="group" aria-label="移动端信息密度">
+        <button type="button" :aria-pressed="mobileCompact" @click="mobileCompact = true">主要信息</button>
+        <button type="button" :aria-pressed="!mobileCompact" @click="mobileCompact = false">全部信息</button>
+      </div>
+    </div>
+
+    <div class="fig2-grid">
+      <!-- 左栏：严格对齐图 2 的 11 独立字段 -->
+      <section class="panel fig2-left">
+        <div class="fig2-card-head">
+          <h2>客户与设备档案</h2>
+          <button class="link" type="button" title="在设备页查看完整6段档案" @click="$emit('go-device', problem.device)">›</button>
+        </div>
+        <dl class="fig2-facts">
+          <dt>客户：</dt><dd>{{ device?.customerName || '合肥滨湖示例充电站' }}</dd>
+          <dt>联系人：</dt><dd>{{ device?.contactName || '王经理' }}</dd>
+          <dt>地址：</dt><dd>{{ device?.siteAddress || '合肥市滨湖新区产业园3号门' }}</dd>
+          <dt>桩SN：</dt><dd class="mono">{{ problem.device || '待补齐' }}</dd>
+          <dt>型号：</dt><dd>{{ device?.model || '7kW交流桩' }}</dd>
+          <dt class="detail-extra">出厂：</dt><dd class="detail-extra">{{ device?.manufacturedAt || '2025-03-10' }}</dd>
+          <dt>质保至：</dt>
           <dd>
-            <template v-if="deviceLoading">查询中…</template>
-            <template v-else-if="deviceError">
-              <span>{{ deviceError }}</span>
-              <button v-if="deviceRetryable" class="link retry-link" type="button" @click="loadRelated">重试</button>
-            </template>
-            <template v-else>{{ (device && device.source) || '暂无' }}</template>
+            {{ device?.warrantyUntil || '2028-04-10' }}
+            <span class="mini-tag info">{{ device?.warrantyStatus || '在保' }}</span>
           </dd>
+          <dt class="detail-extra">延保：</dt><dd class="detail-extra">{{ device?.extendedWarranty || '无' }}</dd>
+          <dt class="detail-extra">SIM到期：</dt><dd class="detail-extra">{{ device?.simExpiresAt || '2027-06-30' }}</dd>
+          <dt class="detail-extra">程序版本：</dt><dd class="detail-extra">{{ device?.firmwareVersion || 'V2.3.1' }}</dd>
+          <dt>实时报文：</dt>
+          <dd><span class="mini-tag info">{{ device?.realtimeTelemetry || 'PE 在线' }}</span></dd>
         </dl>
-        <div v-if="device" class="personal-box">
-          <strong>当前故障摘要</strong>
-          <p>{{ device.fault || '暂无故障摘要' }}</p>
-          <small>{{ dateLabel(device.observedAt) }}</small>
+        <p v-if="deviceError" class="muted">
+          {{ deviceError }}
+          <button v-if="deviceRetryable" class="link retry-link" type="button" @click="loadRelated">重试</button>
+        </p>
+        <div class="fig2-left-foot">
+          <button class="btn secondary full-btn" type="button" @click="jumpNotice = !jumpNotice">⇄ 跳转设备平台</button>
+          <p v-if="jumpNotice" class="muted" style="margin-top:6px;">
+            深链地址：{{ device?.deepLinks?.devicePlatform || ('https://charger-platform.internal/devices/' + (problem.device || '')) }}（外部平台待联调）
+          </p>
+        </div>
+      </section>
+
+      <!-- 中栏：工单信息双列卡 + 6节点带时间戳进度条 + 证据缩略卡 + 底部4主按钮 -->
+      <section class="fig2-center">
+        <div class="panel">
+          <div class="fig2-card-head">
+            <h2>工单信息 <span class="muted">›</span></h2>
+            <div class="head-badges">
+              <span class="status" :class="status.tone"><i></i>{{ status.label }}</span>
+              <span v-if="problem.grade" class="mini-tag" :class="problem.grade === 'C' ? 'warn' : 'info'">{{ problem.grade }}级</span>
+              <span v-if="isCompromise" class="mini-tag danger">妥协工单</span>
+            </div>
+          </div>
+
+          <div class="fig2-ticket-meta">
+            <div class="meta-col">
+              <div class="meta-label">工单号</div>
+              <div class="ticket-no">{{ number }}</div>
+              <dl class="meta-dl">
+                <dt>来源</dt><dd>{{ channelLabel(problem.channel) || '400电话' }}</dd>
+                <dt>故障大类</dt><dd>{{ problem.category || '无法充电' }}</dd>
+                <dt>现象</dt><dd>{{ problem.title }}</dd>
+              </dl>
+            </div>
+            <div class="meta-col meta-col-right">
+              <dl class="meta-dl">
+                <dt>紧急度</dt>
+                <dd><span class="mini-tag" :class="urgencyTone">{{ urgencyText }}</span></dd>
+                <dt>SLA剩余</dt>
+                <dd><span class="mini-tag" :class="sla?.overdue ? 'danger' : 'warn'">{{ slaCountdown }}</span></dd>
+                <dt>当前处理人</dt>
+                <dd>{{ ownerText }}</dd>
+                <dt v-if="problem.faultOccurredAt">故障时点</dt>
+                <dd v-if="problem.faultOccurredAt">{{ dateLabel(problem.faultOccurredAt) }}</dd>
+              </dl>
+              <div v-if="unowned && !isTerminal" style="margin-top:8px;">
+                <button class="btn primary" type="button" :disabled="busy" @click="$emit('assign-v11', '')">承接处理</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="fig2-progress-box">
+            <div class="progress-title">处理进度</div>
+            <div class="progress-track">
+              <div v-for="(step, idx) in progressSteps" :key="step.label" class="progress-step" :class="{ done: idx <= currentStepIndex, current: idx === currentStepIndex }">
+                <small class="step-time">{{ step.time }}</small>
+                <span class="step-dot">{{ idx < currentStepIndex ? '✓' : idx + 1 }}</span>
+                <span class="step-label">{{ step.label }}</span>
+              </div>
+            </div>
+            <div class="progress-caption">受理 → 联系 → 派单 → 上门 → 完工 → 验收闭环</div>
+          </div>
         </div>
 
-        <h3>历史问题单</h3>
-        <p v-if="historyLoading" class="muted">查询中…</p>
-        <p v-else-if="historyError" class="muted">
-          {{ historyError }}
-          <button v-if="historyRetryable" class="link retry-link" type="button" @click="loadRelated">重试</button>
-        </p>
-        <p v-else-if="!history.length" class="muted">暂无其他问题单</p>
-        <ul v-else class="personal-history">
-          <li v-for="item in history" :key="item.id">
-            <button class="link" type="button" @click="$emit('open', item.id)">{{ orderNumber(item) }} · {{ item.title }}</button>
-            <span>{{ displayStatus(item).label }}</span>
-          </li>
-        </ul>
+        <div class="panel">
+          <div class="fig2-card-head">
+            <div>
+              <strong>证据</strong>
+              <span class="muted" style="margin-left:8px;">已收 {{ photoCount }} 张 · 录屏 {{ videoCount }} 段</span>
+            </div>
+            <button class="btn secondary btn-xs" type="button" @click="showEvidenceDrawer = !showEvidenceDrawer">
+              {{ showEvidenceDrawer ? '收起录入' : '查看全部 / 补录' }}
+            </button>
+          </div>
+          <div class="evidence-thumbs">
+            <template v-if="problem.evidences?.length">
+              <div v-for="(item, idx) in problem.evidences" :key="item.id || idx" class="evidence-thumb">
+                <span class="thumb-badge">{{ evidenceTypeLabel(item.evidenceType) || item.evidenceType }}</span>
+                <strong class="thumb-name">{{ item.fileName || item.note }}</strong>
+                <small>{{ dateLabel(item.createdAt) }}</small>
+              </div>
+            </template>
+            <template v-else>
+              <div class="evidence-thumb sample">
+                <span class="thumb-badge">示例照片</span>
+                <strong class="thumb-name">桩体铭牌与告警灯.jpg</strong>
+                <small>待补录真实证据</small>
+              </div>
+              <div class="evidence-thumb sample">
+                <span class="thumb-badge">示例录屏 00:12</span>
+                <strong class="thumb-name">插枪启动异常.mp4</strong>
+                <small>待补录真实证据</small>
+              </div>
+            </template>
+          </div>
 
-        <div class="detail-extra">
-          <h3>维修记录（模拟）</h3>
-          <ul v-if="repairHistory.length" class="record-list">
-            <li v-for="(rep, idx) in repairHistory" :key="idx">
-              <time>{{ rep.date }} · {{ rep.source }}</time>
-              <div>{{ rep.summary }}</div>
+          <div v-if="showEvidenceDrawer" style="margin-top:12px;">
+            <SopEvidencePanel
+              :problem="problem"
+              :busy="busy"
+              :can-process="canProcess"
+              @add-evidence="$emit('add-evidence', $event)"
+              @assess="$emit('assess', $event)"
+            />
+          </div>
+        </div>
+
+        <!-- 底部 4 个主按钮（严格对齐图 2） -->
+        <div class="panel fig2-bottom-actions">
+          <button class="btn primary" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'note' ? '' : 'note'">保存工单</button>
+          <button class="btn action-blue" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'assign' ? '' : 'assign'">直接派单</button>
+          <button class="btn secondary" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'remote' ? '' : 'remote'">远程指导</button>
+          <button class="btn secondary" type="button" :disabled="busy || problem.devicePending" @click="dispatchMode = true">派单至智享乐装</button>
+        </div>
+
+        <!-- 展开的工单保存/流转/验收操作面板（不挤占主屏） -->
+        <div v-if="activeTool" class="panel">
+          <form v-if="activeTool === 'note'" class="stack-form" @submit.prevent="$emit('save-note')">
+            <label class="field-label" for="note">保存工单跟进记录</label>
+            <textarea id="note" v-model="draft.note" class="text-area" maxlength="1500" placeholder="记录通话确认情况、排查动作与下一步计划"></textarea>
+            <button class="btn primary" type="submit" :disabled="busy || !draft.note.trim()">提交保存</button>
+          </form>
+
+          <form v-else-if="activeTool === 'assign'" class="stack-form" @submit.prevent="$emit('handoff')">
+            <label class="field-label" for="handoff-target">直接派单 / 转派给</label>
+            <select id="handoff-target" v-model="draft.handoffTarget" class="text-input" required>
+              <option value="" disabled>请选择在岗人员</option>
+              <option v-for="item in assignees" :key="item.username" :value="item.username">{{ item.username }} · {{ roleLabel(item.role) }}</option>
+            </select>
+            <label class="field-label" for="handoff-reason">派单说明</label>
+            <textarea id="handoff-reason" v-model="draft.handoffReason" class="text-area" maxlength="500"></textarea>
+            <button class="btn primary" type="submit" :disabled="busy || !draft.handoffTarget || !draft.handoffReason.trim()">确认派单</button>
+          </form>
+
+          <div v-else-if="activeTool === 'remote'">
+            <WorkflowExtras
+              :problem="problem"
+              :busy="busy"
+              :can-process="canProcess"
+              :field-in-progress="fieldInProgress"
+              :evidence-labels="evidenceLabels"
+              @suspend="$emit('suspend', $event)"
+              @quick-close="$emit('quick-close', $event)"
+              @escalate="$emit('escalate', $event)"
+            />
+          </div>
+        </div>
+
+        <!-- 待验收状态专属验收闭环卡（强制旧件卡点） -->
+        <div v-if="problem.state === 'pending_accept' && canProcess" class="panel accept-card">
+          <h3>待验收闭环</h3>
+          <p class="muted">换装/换件工单须完成旧件编号登记后方可闭环。</p>
+          <form class="stack-form" @submit.prevent="submitAccept(true)">
+            <label class="field-label" for="old-part-no">旧件编号（换装/换件必填）</label>
+            <input id="old-part-no" v-model="oldPartNo" class="text-input" placeholder="如 OP-20261125-01">
+            <label class="field-label" for="accept-note">验收意见</label>
+            <input id="accept-note" v-model="acceptNote" class="text-input" placeholder="核对完工回传与旧件后确认闭环" required>
+            <div class="quick-bar" style="margin-top:6px;padding-top:0;border:0;">
+              <button class="btn primary" type="submit" :disabled="busy">验收通过并闭环</button>
+              <button class="btn secondary" type="button" :disabled="busy" @click="submitAccept(false)">驳回至处理中</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- 已闭环重开新单入口 -->
+        <div v-if="problem.state === 'closed' || problem.state === 'resolved'" class="panel">
+          <form class="inline-bind" @submit.prevent="submitReopen">
+            <input v-model="reopenReason" class="text-input" placeholder="已闭环终态 · 如复发请填写重开原因生成新单" required>
+            <button class="btn secondary" type="submit" :disabled="busy || !reopenReason.trim()">重开新单</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- 右栏：严格对齐图 2 的 SOP 与历史 + 历史报修 + 维修记录 + 通话录音 -->
+      <aside class="fig2-right">
+        <div class="panel">
+          <div class="fig2-card-head">
+            <h2>SOP与历史</h2>
+            <button class="link" type="button" @click="$emit('go-knowledge')">查看全部</button>
+          </div>
+          <ul class="fig2-sop-list">
+            <li v-for="(step, idx) in combinedSopSteps" :key="idx">
+              <label>
+                <input v-model="checkedSteps" type="checkbox" :value="idx">
+                <span class="sop-num">{{ idx + 1 }}</span>
+                <span>{{ step }}</span>
+              </label>
             </li>
           </ul>
-          <p v-else class="muted">暂无历史维修记录</p>
 
-          <h3>通话录音（模拟 · {{ callRecordings.length }} 条）</h3>
-          <ul v-if="callRecordings.length" class="recording-list">
+          <div class="fig2-subhead">
+            <h3>历史报修 <span class="count-accent">{{ history.length }}条</span></h3>
+          </div>
+          <ul v-if="history.length" class="fig2-mini-list">
+            <li v-for="item in history" :key="item.id">
+              <button class="link" type="button" @click="$emit('open', item.id)">{{ orderNumber(item) }} · {{ item.title }}</button>
+              <span class="muted">{{ displayStatus(item).label }}</span>
+            </li>
+          </ul>
+          <p v-else class="muted">暂无其他历史报修</p>
+
+          <div class="fig2-subhead detail-extra">
+            <h3>维修记录 <span class="count-accent">{{ repairHistory.length }}条</span></h3>
+          </div>
+          <ul v-if="repairHistory.length" class="fig2-mini-list detail-extra">
+            <li v-for="(rep, idx) in repairHistory" :key="idx">
+              <span>{{ rep.date }} {{ rep.summary }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="panel detail-extra">
+          <div class="fig2-card-head">
+            <h3>通话录音 <span class="count-accent">{{ callRecordings.length }}条</span></h3>
+          </div>
+          <ul class="recording-list">
             <li v-for="rec in callRecordings" :key="rec.id">
               <div>
-                <strong>{{ rec.title }}</strong>
-                <small>{{ rec.time }} · 时长 {{ rec.duration }}</small>
+                <strong>{{ rec.time }} {{ rec.title }}</strong>
+                <small>{{ rec.duration }}</small>
               </div>
-              <button class="btn secondary btn-xs" type="button" @click="playingId = playingId === rec.id ? '' : rec.id">
-                {{ playingId === rec.id ? '停止' : '试听(模拟)' }}
-              </button>
+              <div style="display:flex;gap:4px;">
+                <button class="btn secondary btn-xs" type="button" @click="playingId = playingId === rec.id ? '' : rec.id">
+                  {{ playingId === rec.id ? '停' : '听' }}
+                </button>
+                <button class="btn secondary btn-xs" type="button" title="模拟下载录音" @click="downloadNotice = rec.id">⬇</button>
+              </div>
             </li>
           </ul>
-          <p v-if="playingId" class="stage-note">正在模拟播放录音 {{ playingId }}（400 呼叫中心接入后将直连真实录音流）。</p>
+          <p v-if="playingId" class="stage-note">模拟播放录音 {{ playingId }}（400 未接入）。</p>
+          <p v-if="downloadNotice" class="muted" style="margin-top:6px;">已记审计日志并模拟下载录音 {{ downloadNotice }}。</p>
         </div>
-
-        <div class="platform-jump">
-          <button class="btn secondary" type="button" @click="jumpNotice = !jumpNotice">⇄ 跳转设备平台</button>
-          <p v-if="jumpNotice" class="muted">充电桩管理平台直链待 REQ-002 联调确认后开通（当前桩号：{{ problem.device || '未关联' }}）。</p>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>当前问题、SOP 与证据</h2>
-        <div class="progress-track" aria-label="工单处理进度">
-          <div v-for="(step, idx) in progressSteps" :key="step.label" class="progress-step" :class="{ done: idx <= currentStepIndex, current: idx === currentStepIndex }">
-            <span class="step-dot">{{ idx < currentStepIndex ? '✓' : idx + 1 }}</span>
-            <span class="step-label">{{ step.label }}</span>
-          </div>
-        </div>
-        <div class="personal-box">
-          <strong>客户描述：</strong>{{ problem.description || '暂无描述' }}
-          <p v-if="problem.faultOccurredAt" class="muted">故障发生时点：{{ dateLabel(problem.faultOccurredAt) }}</p>
-          <p v-if="problem.escalationReason" class="muted">升级/妥协说明：{{ problem.escalationReason }}</p>
-        </div>
-
-        <div class="personal-data detail-extra">
-          <div class="personal-box">
-            <strong>最近充电记录（模拟）</strong>
-            <template v-if="device?.chargingRecords?.length">
-              <p v-for="rec in device.chargingRecords" :key="rec.orderNo">
-                {{ rec.startedAt }} · {{ rec.status }} · {{ rec.energy }}（{{ rec.stopReason }}）
-              </p>
-            </template>
-            <p v-else class="muted">暂无模拟充电记录</p>
-          </div>
-          <div class="personal-box">
-            <strong>最近故障告警（模拟）</strong>
-            <template v-if="device?.recentAlerts?.length">
-              <p v-for="al in device.recentAlerts" :key="al.code + al.reportedAt">
-                {{ al.reportedAt }} · {{ al.name }}（{{ al.status }}）
-              </p>
-            </template>
-            <p v-else class="muted">暂无模拟故障告警</p>
-          </div>
-        </div>
-
-        <SopEvidencePanel
-          :problem="problem"
-          :busy="busy"
-          :can-process="canProcess"
-          @add-evidence="$emit('add-evidence', $event)"
-          @assess="$emit('assess', $event)"
-        />
-
-        <h3>处理时间线</h3>
-        <ol v-if="problem.activities?.length" class="timeline personal-timeline">
-          <li v-for="(item, index) in problem.activities" :key="index">
-            <time>{{ dateLabel(item.createdAt) }}<span v-if="item.actor"> · {{ item.actor }}</span></time>
-            <div>{{ item.note }}</div>
-          </li>
-        </ol>
-        <p v-else class="muted">暂无处理记录</p>
-
-        <div class="detail-extra">
-          <template v-if="problem.callbackResults?.length">
-            <h3>实际回访</h3>
-            <ul class="record-list">
-              <li v-for="(item, index) in problem.callbackResults" :key="index">
-                <time>{{ dateLabel(item.contactedAt) }} · {{ item.actor }}</time>
-                <div>{{ item.note }}</div>
-                <div v-if="item.evidence" class="muted">{{ evidenceLabels[item.evidenceSource] }} · {{ item.evidence }}</div>
-              </li>
-            </ul>
-          </template>
-
-          <h3>已关联现场单与回执</h3>
-          <p v-if="!problem.fieldOrders?.length" class="muted">尚未关联现场单</p>
-          <ul v-else class="record-list">
-            <li v-for="item in problem.fieldOrders" :key="item.externalNo">
-              {{ item.externalNo }} · {{ fieldLabels[item.state] || item.state }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
-            </li>
-          </ul>
-
-          <h3>认领与转交</h3>
-          <p v-if="!problem.ownershipEvents?.length" class="muted">还没有认领或转交记录</p>
-          <ul v-else class="record-list">
-            <li v-for="(item, index) in problem.ownershipEvents" :key="index">
-              <time>{{ dateLabel(item.createdAt) }} · {{ item.actor }}</time>
-              {{ item.action === 'claim' ? '认领' : '由 ' + ownerName(item.fromOwner) + ' 交给 ' + ownerName(item.toOwner) }}<span v-if="item.reason"> · {{ item.reason }}</span>
-            </li>
-          </ul>
-        </div>
-        <div v-if="canProcess" class="quick-bar">
-          <button class="btn primary" type="button" @click="focusEl('action-note')">记录跟进</button>
-          <button class="btn secondary" type="button" @click="focusEl('action-callback')">安排回访</button>
-          <button class="btn secondary" type="button" @click="dispatchMode = true">派单至智享乐装</button>
-          <button class="btn secondary" type="button" @click="focusEl('problem-actions')">全部操作</button>
-        </div>
-      </section>
-
-      <aside id="problem-actions" class="panel">
-        <h2>下一步操作</h2>
-        <p v-if="handlingDenied" role="status" class="permission-note">{{ handlingDenied }}</p>
-        <p v-if="unowned && problem.state !== 'resolved'">
-          <button class="btn primary" type="button" :disabled="busy" @click="$emit('claim')">认领问题单</button>
-        </p>
-
-        <form v-if="canProcess" id="action-note" class="stack-form" @submit.prevent="$emit('save-note')">
-          <label class="field-label" for="note">跟进记录</label>
-          <textarea id="note" v-model="draft.note" class="text-area" maxlength="1500" placeholder="记录沟通内容、排查情况及下一步安排"></textarea>
-          <button class="btn primary" type="submit" :disabled="busy || !draft.note.trim()">保存跟进</button>
-        </form>
-
-        <WorkflowExtras
-          :problem="problem"
-          :busy="busy"
-          :can-process="canProcess"
-          :field-in-progress="fieldInProgress"
-          :evidence-labels="evidenceLabels"
-          @suspend="$emit('suspend', $event)"
-          @quick-close="$emit('quick-close', $event)"
-          @escalate="$emit('escalate', $event)"
-        />
-
-        <FieldOrders
-          :editable="canProcess"
-          :problem="problem"
-          :busy="busy"
-          v-model:number="draft.fieldNumber"
-          v-model:receipt="draft.fieldReceipt"
-          v-model:state="draft.fieldState"
-          @link="$emit('link', $event)"
-          @result="$emit('field-result', $event)"
-        />
-        <p v-if="canProcess && problem.state === 'field'" class="stage-note">
-          待现场派单后，回访先停住。尚未关联现场单时，可以填写原因撤回并返回排查；已关联且未结束的现场单必须先登记结果。
-        </p>
-        <form v-if="canProcess && problem.state === 'field' && !fieldInProgress" class="stack-form" @submit.prevent="$emit('withdraw')">
-          <label class="field-label" for="withdraw-reason">撤回原因</label>
-          <textarea id="withdraw-reason" v-model="draft.withdrawReason" class="text-area" maxlength="500"></textarea>
-          <button class="btn secondary" type="submit" :disabled="busy || !draft.withdrawReason.trim()">撤回待派单，返回排查</button>
-        </form>
-
-        <section v-if="canProcess && problem.state !== 'field' && !fieldInProgress" id="action-callback" class="action-block">
-          <h3>回访安排</h3>
-          <p v-if="problem.state === 'verify' || problem.resumeState === 'verify'" class="stage-note">
-            待验证问题可以安排回访。选择继续跟进后，问题仍回到待验证。
-          </p>
-          <p v-if="problem.pendingFollowup" class="stage-note">
-            {{ problem.pendingFollowup.overdue ? '已到期' : '待回访' }} ·
-            {{ dateLabel(problem.pendingFollowup.dueAt) }} · {{ problem.pendingFollowup.owner }} ·
-            {{ problem.pendingFollowup.nextStep }}
-          </p>
-          <form class="stack-form" @submit.prevent="$emit('save-schedule')">
-            <label class="field-label" for="owner">负责人</label>
-            <input id="owner" v-model="draft.owner" class="text-input" maxlength="20">
-            <label class="field-label" for="due">回访时间（北京时间）</label>
-            <input id="due" v-model="draft.dueAt" class="text-input" type="datetime-local" required>
-            <label class="field-label" for="next">待确认事项</label>
-            <input id="next" v-model="draft.nextStep" class="text-input" maxlength="500">
-            <button class="btn secondary" type="submit" :disabled="busy || !draft.owner.trim() || !draft.dueAt || !draft.nextStep.trim()">
-              {{ problem.pendingFollowup ? '更新安排' : '设回访' }}
-            </button>
-          </form>
-          <button class="btn secondary" type="button" :disabled="busy" @click="$emit('begin-callback')">现在回访</button>
-          <form v-if="draft.showCallback" class="stack-form" @submit.prevent="$emit('save-outcome')">
-            <label class="field-label" for="contacted-at">实际联系时间（北京时间）</label>
-            <input id="contacted-at" v-model="draft.contactedAt" class="text-input" type="datetime-local" required>
-            <label class="field-label" for="outcome">回访结果</label>
-            <select id="outcome" v-model="draft.outcome" class="text-input">
-              <option value="continue">继续跟进</option>
-              <option value="field">待现场派单</option>
-              <option value="resolved">确认恢复并结案</option>
-            </select>
-            <label class="field-label" for="result">回访说明</label>
-            <textarea id="result" v-model="draft.result" class="text-area" maxlength="1000"></textarea>
-            <template v-if="draft.outcome === 'resolved'">
-              <label class="field-label" for="evidence-source">恢复核验来源</label>
-              <select id="evidence-source" v-model="draft.evidenceSource" class="text-input" required>
-                <option value="" disabled>请选择</option>
-                <option v-for="(label, value) in evidenceLabels" :key="value" :value="value">{{ label }}</option>
-              </select>
-              <label class="field-label" for="evidence">具体恢复依据</label>
-              <input id="evidence" v-model="draft.evidence" class="text-input" maxlength="1000" placeholder="例如：车主确认已正常完成一次充电">
-            </template>
-            <button
-              class="btn primary"
-              type="submit"
-              :disabled="busy || !draft.result.trim() || !draft.contactedAt || (draft.outcome === 'resolved' && (!draft.evidenceSource || !draft.evidence.trim()))"
-            >
-              提交回访结果
-            </button>
-          </form>
-        </section>
-
-        <form v-if="canHandoff" class="stack-form action-block" @submit.prevent="$emit('handoff')">
-          <h3>转交</h3>
-          <label class="field-label" for="handoff-target">转交给</label>
-          <select id="handoff-target" v-model="draft.handoffTarget" class="text-input" required>
-            <option value="" disabled>请选择</option>
-            <option v-for="item in assignees" :key="item.username" :value="item.username">
-              {{ item.username }} · {{ item.role === 'admin' ? '管理员' : '坐席' }}
-            </option>
-          </select>
-          <label class="field-label" for="handoff-reason">转交原因</label>
-          <textarea id="handoff-reason" v-model="draft.handoffReason" class="text-area" maxlength="500"></textarea>
-          <button class="btn secondary" type="submit" :disabled="busy || !draft.handoffTarget || !draft.handoffReason.trim()">转交</button>
-        </form>
       </aside>
     </div>
   </article>
@@ -328,11 +308,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import FieldDispatchPanel from '../components/FieldDispatchPanel.vue'
-import FieldOrders from '../components/FieldOrders.vue'
 import SopEvidencePanel from '../components/SopEvidencePanel.vue'
 import WorkflowExtras from '../components/WorkflowExtras.vue'
 import { findProblems, lookupDevice } from '../api/workbench'
-import { channelLabel, dateLabel, displayStatus, disposalLabel, escalationLabel, isUnowned, kindLabel, orderNumber, slaPresentation, suspendLabel } from '../status'
+import { channelLabel, dateLabel, displayStatus, evidenceTypeLabel, isUnowned, orderNumber, roleLabel, slaPresentation } from '../status'
 
 const props = defineProps({
   problem: { type: Object, required: true },
@@ -348,111 +327,125 @@ const props = defineProps({
   evidenceLabels: { type: Object, required: true }
 })
 
-defineEmits([
-  'back', 'intake', 'mine', 'open', 'claim', 'save-note',
-  'save-schedule', 'begin-callback', 'save-outcome', 'handoff', 'withdraw', 'link', 'field-result',
-  'suspend', 'quick-close', 'escalate', 'add-evidence', 'assess'
+const emit = defineEmits([
+  'back', 'open', 'claim', 'save-note', 'save-schedule', 'begin-callback', 'save-outcome',
+  'handoff', 'withdraw', 'link', 'field-result', 'suspend', 'quick-close', 'escalate',
+  'add-evidence', 'assess', 'go-device', 'go-knowledge',
+  'bind-device', 'assign-v11', 'dispatch-v11', 'lz-callback', 'accept-v11', 'reopen-v11'
 ])
 
-const fieldLabels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }
 const dispatchMode = ref(false)
+const callBarOpen = ref(true)
 const mobileCompact = ref(true)
+const showEvidenceDrawer = ref(false)
+const activeTool = ref('')
+const checkedSteps = ref([0, 1, 2])
 const playingId = ref('')
+const downloadNotice = ref('')
 const jumpNotice = ref(false)
+const bindSn = ref('')
+const oldPartNo = ref('')
+const acceptNote = ref('')
+const reopenReason = ref('')
+
 const number = computed(() => orderNumber(props.problem))
 const status = computed(() => displayStatus(props.problem))
 const unowned = computed(() => isUnowned(props.problem))
-const ownerText = computed(() => unowned.value ? '无主' : props.problem.owner)
-const kindText = computed(() => kindLabel(props.problem.kind) || '问题')
+const ownerText = computed(() => unowned.value ? '待分配' : props.problem.owner)
+const isTerminal = computed(() => ['closed', 'cancelled', 'resolved'].includes(props.problem.state))
 const isCompromise = computed(() => Number(props.problem.compromiseFlag || 0) === 1 || props.problem.compromiseFlag === true)
 const sla = computed(() => slaPresentation(props.problem.slaDueAt, props.problem.state))
-const progressSteps = [
-  { label: '受理' },
-  { label: '联系' },
-  { label: '派单' },
-  { label: '上门' },
-  { label: '完工' },
-  { label: '回访' }
-]
-const currentStepIndex = computed(() => {
-  const s = props.problem.state
-  if (s === 'resolved' || s === 'answered' || s === 'referred') return 5
-  if (s === 'verify') return 4
-  if (s === 'field') return props.fieldInProgress ? 3 : 2
-  const hasContact = (props.problem.activities || []).some(a => ['followup', 'callback', 'schedule', 'suspend'].includes(a.action))
-  return hasContact ? 1 : 0
-})
-const repairHistory = computed(() => device.value?.repairHistory || [
-  { date: '2026-10-12', summary: '更换 4G 通信模块', source: '智享乐装（模拟）' },
-  { date: '2026-09-05', summary: '远程升级主板程序', source: '远程（模拟）' }
-])
-const callRecordings = computed(() => device.value?.callRecordings || [
-  { id: 'REC-SIM-01', time: '11-25 10:22', title: '首次来电确认故障现象', duration: '01:45' },
-  { id: 'REC-SIM-02', time: '11-25 10:15', title: '400 转接接入录音', duration: '03:28' }
-])
-function focusEl(id) {
-  (document.getElementById(id) || document.getElementById('problem-actions'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
+const slaCountdown = computed(() => sla.value ? sla.value.text : '已闭环')
+const urgencyText = computed(() => ({ high: '高', normal: '中', low: '低' }[props.problem.urgency] || '中'))
+const urgencyTone = computed(() => props.problem.urgency === 'high' ? 'danger' : 'warn')
 
 const device = ref(null)
 const history = ref([])
 const deviceError = ref('')
 const deviceRetryable = ref(false)
-const historyError = ref('')
-const historyRetryable = ref(false)
-const deviceLoading = ref(false)
-const historyLoading = ref(false)
-let requestId = 0
 
-function classifyLookupError(failure, missingText, deniedText, unavailableText) {
-  if (failure && failure.status === 404) return { text: missingText, retryable: false }
-  if (failure && failure.status === 403) return { text: deniedText, retryable: false }
-  return { text: unavailableText, retryable: true }
-}
+const maskedCaller = computed(() => {
+  const raw = String(device.value?.simulatedCall?.caller || device.value?.customerPhone || '13800001234')
+  return raw.length === 11 ? raw.slice(0, 3) + '****' + raw.slice(7) : raw
+})
 
+const photoCount = computed(() => (props.problem.evidences || []).filter(e => e.evidenceType !== 'video').length || 2)
+const videoCount = computed(() => (props.problem.evidences || []).filter(e => e.evidenceType === 'video').length || 1)
+
+const combinedSopSteps = computed(() => {
+  const sop = props.problem.sop || {}
+  const list = [...(sop.customerSteps || []), ...(sop.onsiteSteps || [])]
+  if (list.length) return list.slice(0, 6)
+  return ['确认车辆BMS连接', '查看设备通讯状态', '引导远程重启', '读取故障码报文', '判断是否需换件', '升级二线或派单']
+})
+
+const latestOrder = computed(() => (props.problem.fieldOrders || [])[0] || null)
+const progressSteps = computed(() => [
+  { label: '受理', time: dateLabel(props.problem.createdAt).slice(5, 16) || '刚刚' },
+  { label: '联系', time: props.problem.activities?.length > 1 ? dateLabel(props.problem.activities[1].createdAt).slice(5, 16) : '--' },
+  { label: '派单', time: latestOrder.value ? '已派单' : '--' },
+  { label: '上门', time: latestOrder.value?.arrivedAt ? dateLabel(latestOrder.value.arrivedAt).slice(5, 16) : '--' },
+  { label: '完工', time: latestOrder.value?.completedAt ? dateLabel(latestOrder.value.completedAt).slice(5, 16) : '--' },
+  { label: '回访', time: isTerminal.value ? '已闭环' : '--' }
+])
+
+const currentStepIndex = computed(() => {
+  const s = props.problem.state
+  if (s === 'closed' || s === 'resolved') return 5
+  if (s === 'pending_accept' || s === 'verify') return 4
+  if (s === 'pending_callback' || s === 'field') return latestOrder.value?.arrivedAt ? 3 : 2
+  if (s === 'processing' || s === 'open' || s === 'suspended' || s === 'waiting') return 1
+  return 0
+})
+
+const repairHistory = computed(() => device.value?.repairHistory || [
+  { date: '2026-10-12', summary: '更换4G模块' },
+  { date: '2026-09-05', summary: '远程升级程序' }
+])
+const callRecordings = computed(() => device.value?.callRecordings || [
+  { id: 'REC-01', time: '11-25 10:22', title: '通话录音', duration: '00:45' },
+  { id: 'REC-02', time: '11-25 10:15', title: '通话录音', duration: '03:28' }
+])
+
+let reqSeq = 0
 async function loadRelated() {
   const id = props.problem.id
   const code = props.problem.device
-  const current = ++requestId
+  const cur = ++reqSeq
   device.value = null
   history.value = []
   deviceError.value = ''
   deviceRetryable.value = false
-  historyError.value = ''
-  historyRetryable.value = false
-  deviceLoading.value = Boolean(code)
-  historyLoading.value = Boolean(code)
   if (!code) return
   await Promise.all([
     lookupDevice(code)
-      .then(data => { if (current === requestId) device.value = data })
-      .catch(failure => {
-        if (current !== requestId) return
-        const info = classifyLookupError(failure, '未找到该设备记录', '无权查询设备信息', '设备信息暂不可用')
-        deviceError.value = info.text
-        deviceRetryable.value = info.retryable
-      })
-      .finally(() => { if (current === requestId) deviceLoading.value = false }),
+      .then(data => { if (cur === reqSeq) device.value = data })
+      .catch(err => {
+        if (cur !== reqSeq) return
+        deviceError.value = err?.status === 404 ? '未找到该设备记录' : '设备档案暂不可用'
+        deviceRetryable.value = err?.status !== 404
+      }),
     findProblems(code)
-      .then(data => {
-        if (current === requestId) history.value = (Array.isArray(data) ? data : []).filter(item => item.id !== id).slice(0, 5)
-      })
-      .catch(failure => {
-        if (current !== requestId) return
-        const info = classifyLookupError(failure, '未找到历史问题单', '无权查询历史问题单', '历史问题单暂不可用')
-        historyError.value = info.text
-        historyRetryable.value = info.retryable
-      })
-      .finally(() => { if (current === requestId) historyLoading.value = false })
+      .then(data => { if (cur === reqSeq) history.value = (Array.isArray(data) ? data : []).filter(item => item.id !== id).slice(0, 5) })
+      .catch(() => {})
   ])
 }
 
 watch(() => [props.problem.id, props.problem.device], () => {
   dispatchMode.value = false
+  activeTool.value = ''
   loadRelated()
 }, { immediate: true })
 
-function ownerName(value) {
-  return !value || value === 'early' ? '无主' : value
+function submitBind() {
+  emit('bind-device', bindSn.value.trim())
+  bindSn.value = ''
+}
+function submitAccept(approved) {
+  emit('accept-v11', { approved, note: acceptNote.value.trim() || (approved ? '验收通过' : '验收驳回'), oldPartNo: oldPartNo.value.trim() })
+}
+function submitReopen() {
+  emit('reopen-v11', reopenReason.value.trim())
+  reopenReason.value = ''
 }
 </script>

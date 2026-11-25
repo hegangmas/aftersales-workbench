@@ -61,7 +61,29 @@ async function request(path, body, key) {
   }
 }
 
-export const lookupDevice = query => request('/devices/lookup?query=' + encodeURIComponent(query))
+export const lookupDevice = (query, failSource) => {
+  const qs = new URLSearchParams({ query })
+  if (failSource) qs.set('failSource', failSource)
+  return request('/devices/search?' + qs.toString())
+}
+export const listCustomers = () => request('/customers')
+export const createCustomer = form => request('/customers', form)
+export const listKnowledgeSops = () => request('/knowledge/sops')
+export const listAdminSops = () => request('/admin/sops')
+export const saveAdminSop = form => request('/admin/sops', form)
+export const publishAdminSop = id => request('/admin/sops/' + encodeURIComponent(id) + '/publish', {})
+export const updateOwnDuty = status => request('/accounts/duty', { status })
+export const updateUserDuty = (username, status) => request('/accounts/' + encodeURIComponent(username) + '/duty', { status })
+export const createProblemV11 = form => request('/v11/problems', form, requestKey())
+export const bindProblemDevice = (id, device, expectedVersion) => request('/v11/problems/' + encodeURIComponent(id) + '/bind-device', { device, expectedVersion }, requestKey())
+export const assignProblemV11 = (id, target, expectedVersion) => request('/v11/problems/' + encodeURIComponent(id) + '/assign', { target, expectedVersion }, requestKey())
+export const dispatchProblemV11 = (id, form) => request('/v11/problems/' + encodeURIComponent(id) + '/dispatch', form, requestKey())
+export const triggerLezhuangCallback = (id, form) => request('/v11/problems/' + encodeURIComponent(id) + '/lezhuang-callback', form, requestKey())
+export const acceptProblemV11 = (id, form) => request('/v11/problems/' + encodeURIComponent(id) + '/accept', form, requestKey())
+export const cancelProblemV11 = (id, reason, expectedVersion) => request('/v11/problems/' + encodeURIComponent(id) + '/cancel', { reason, expectedVersion }, requestKey())
+export const reopenProblemV11 = (id, reason) => request('/v11/problems/' + encodeURIComponent(id) + '/reopen', { reason }, requestKey())
+export const forceDistributeV11 = () => request('/v11/problems/force-distribute', {})
+export const fetchMonthlyReport = () => request('/reports/monthly')
 export const createProblem = form => request('/problems', form, requestKey())
 export const loadProblem = id => request('/problems/' + encodeURIComponent(id))
 export const addFollowup = (id, note, version) => request('/problems/' + encodeURIComponent(id) + '/followups', { note, expectedVersion: version }, requestKey())
