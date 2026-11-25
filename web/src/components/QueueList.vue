@@ -22,7 +22,6 @@ defineProps({
   items: { type: Array, default: () => [] },
   total: { type: Number, default: 0 },
   empty: { type: String, default: '' },
-  mode: { type: String, default: 'mine' },
   busy: Boolean,
   hasMore: Boolean
 })

@@ -90,18 +90,38 @@
         <p>全部问题单共 <strong>{{ summary.total }}</strong> 条<span v-if="scopeText" class="scope">（{{ scopeText }}）</span></p>
       </section>
       <ProblemBoard v-if="view === 'board'" :items="boardItems" :total="boardTotal" :page="boardPage" :page-size="pageSize" :has-next="boardHasNext" :busy="busy" :filters="boardFilters" :summary="summary" :categories="boardCategories" :assignees="assignees" @open="openProblem" @claim="claimRow" @search="searchBoard" @page="goToBoardPage" />
-      <QueueList v-else-if="view === 'mine'" mode="mine" :items="mineItems" :total="mineTotal" :busy="busy" :has-more="Boolean(mineNext)" empty="当前没有负责中的问题单" @open="openProblem" @more="moreMine" />
-      <QueueList v-else-if="view === 'due'" mode="due" :items="dueItems" :total="dueTotal" :busy="busy" :has-more="Boolean(dueNext)" :empty="dueScope === 'mine' ? '我的到期回访为空' : '团队到期回访为空'" @open="openProblem" @more="moreDue" />
+      <QueueList v-else-if="view === 'mine'" :items="mineItems" :total="mineTotal" :busy="busy" :has-more="Boolean(mineNext)" empty="当前没有负责中的问题单" @open="openProblem" @more="moreMine" />
+      <QueueList v-else-if="view === 'due'" :items="dueItems" :total="dueTotal" :busy="busy" :has-more="Boolean(dueNext)" :empty="dueScope === 'mine' ? '我的到期回访为空' : '团队到期回访为空'" @open="openProblem" @more="moreDue" />
       <IntakePanel v-else-if="view === 'intake'" v-model:query="query" v-model:title="title" v-model:description="description" :device="device" :orders="deviceOrders" :busy="busy" @search="search" @create="create" @open="openProblem" />
       <AccountPanel v-else-if="view === 'accounts' && account.role === 'admin'" :accounts="accounts" :busy="busy" :notice="accountNotice" :create-account="addAccount" :reset-password="resetAccountPassword" @toggle="toggleAccount" />
       <PasswordPanel v-else-if="view === 'security'" :busy="busy" :notice="passwordNotice" :change-password="changeOwnPassword" />
-      <template v-else-if="view === 'detail' && problem">
-      <PersonalWorkbench :problem="problem" :busy="busy" :can-process="canProcess" :handling-denied="handlingDenied" :field-in-progress="fieldInProgress" v-model:note="note" @back="backToList" @intake="showNav('intake')" @mine="showNav('mine')" @open="openProblem" @claim="claim" @save-note="saveNote" />
-      <div id="problem-actions"><ProblemDetail :problem="problem" :busy="busy" :can-process="canProcess" :can-handoff="canHandoff" :handling-denied="handlingDenied" :next-action="nextAction" :refresh-note="refreshNote"
-        v-model:note="note" v-model:owner="owner" v-model:due-at="dueAt" v-model:next-step="nextStep" v-model:outcome="outcome" v-model:result="result" :show-callback="showCallback" v-model:contacted-at="contactedAt" v-model:evidence-source="evidenceSource" v-model:evidence="evidence"
-        v-model:withdraw-reason="withdrawReason" v-model:handoff-target="handoffTarget" v-model:handoff-reason="handoffReason" v-model:field-number="fieldNumber" v-model:field-receipt="fieldReceipt" v-model:field-state="fieldState"
-        :assignees="assignees" :evidence-labels="evidenceLabels" :field-in-progress="fieldInProgress" @back="backToList" @claim="claim" @save-note="saveNote" @save-schedule="saveSchedule" @begin-callback="beginCallback" @save-outcome="saveOutcome" @handoff="handoff" @withdraw="withdrawDispatch" @link="saveFieldLink" @field-result="saveFieldResult" /></div>
-      </template>
+      <PersonalWorkbench
+        v-else-if="view === 'detail' && problem"
+        :problem="problem"
+        :draft="draft"
+        :busy="busy"
+        :can-process="canProcess"
+        :can-handoff="canHandoff"
+        :handling-denied="handlingDenied"
+        :next-action="nextAction"
+        :refresh-note="refreshNote"
+        :assignees="assignees"
+        :evidence-labels="evidenceLabels"
+        :field-in-progress="fieldInProgress"
+        @back="backToList"
+        @intake="showNav('intake')"
+        @mine="showNav('mine')"
+        @open="openProblem"
+        @claim="claim"
+        @save-note="saveNote"
+        @save-schedule="saveSchedule"
+        @begin-callback="beginCallback"
+        @save-outcome="saveOutcome"
+        @handoff="handoff"
+        @withdraw="withdrawDispatch"
+        @link="saveFieldLink"
+        @field-result="saveFieldResult"
+      />
     </main>
   </div>
 </template>
@@ -116,76 +136,66 @@ import NavIcon from './components/NavIcon.vue'
 import PasswordPanel from './components/PasswordPanel.vue'
 import PersonalWorkbench from './components/PersonalWorkbench.vue'
 import ProblemBoard from './components/ProblemBoard.vue'
-import ProblemDetail from './components/ProblemDetail.vue'
 import QueueList from './components/QueueList.vue'
+import { emptyFilters, useBoardQueues } from './composables/useBoardQueues'
+import { useProblemDraft } from './composables/useProblemDraft'
 import { initial, orderNumber, summaryScope } from './status'
-import { currentAccount, login, logout, addFollowup, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, dueCallbacks, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, mineProblems, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, searchProblems, setAccountEnabled, withdrawField } from './api/workbench'
+import { currentAccount, login, logout, addFollowup, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, setAccountEnabled, withdrawField } from './api/workbench'
 
 const REMEMBER_KEY = 'songguo-workbench-username'
 const pageSize = 10
 const query = ref('')
 const title = ref('')
 const description = ref('')
-const note = ref('')
 const device = ref(null)
 const problem = ref(null)
 const busy = ref(false)
 const error = ref('')
 const errorSummary = ref(null)
 const loginPanel = ref(null)
-const orderId = ref('')
 const deviceOrders = ref([])
-const owner = ref('')
-const dueAt = ref('')
-const nextStep = ref('')
-const outcome = ref('continue')
-const result = ref('')
 const account = ref(null)
 const authReady = ref(false)
 const username = ref('')
 const password = ref('')
 const rememberAccount = ref(false)
-const showCallback = ref(false)
-const contactedAt = ref('')
-const evidenceSource = ref('')
-const evidence = ref('')
 const evidenceLabels = { customer: '车主确认', platform: '平台充电记录', field: '现场复测' }
 const accounts = ref([])
 const assignees = ref([])
-const withdrawReason = ref('')
-const handoffTarget = ref('')
-const handoffReason = ref('')
 const accountNotice = ref('')
-const fieldNumber = ref('')
-const fieldReceipt = ref('')
-const fieldState = ref('complete')
 const conflict = ref(false)
-const refreshNote = ref('')
 const passwordNotice = ref('')
-const boardItems = ref([])
-const boardTotal = ref(0)
-const boardPage = ref(0)
-const boardHasNext = ref(false)
-const boardCategories = ref([])
-const boardFilters = ref(emptyFilters())
-const boardCursors = ref([null])
-const summary = ref(null)
 const view = ref('board')
 const returnView = ref('board')
 const detailFocus = ref('')
 const navOpen = ref(false)
 const sidebarExpanded = ref(false)
 const wide = ref(true)
-const dueScope = ref('team')
-const dueItems = ref([])
-const dueTotal = ref(0)
-const dueNext = ref(null)
-const dueLoaded = ref(false)
 let mediaQuery
-const mineItems = ref([])
-const mineTotal = ref(0)
-const mineNext = ref(null)
-const mineLoaded = ref(false)
+
+const {
+  boardItems, boardTotal, boardPage, boardHasNext, boardCategories, boardFilters, boardCursors, summary,
+  dueScope, dueItems, dueTotal, dueNext,
+  mineItems, mineTotal, mineNext,
+  loadBoard, loadDue, loadMine, refreshQueues: refreshBoardQueues, ensureFreshQueue, resetQueues
+} = useBoardQueues(pageSize)
+
+function ownerLabel(value) {
+  return !value || value === 'early' ? '无主' : value
+}
+function unowned(item) {
+  return !item?.owner || item.owner === 'early'
+}
+function canHandle(current) {
+  if (!current || current.state === 'resolved') return false
+  if (account.value?.role === 'admin') return true
+  if (unowned(current)) return false
+  return account.value?.username === current.owner
+}
+
+const {
+  draft, refreshNote, beginCallback, snapshotDraft, fillFromServer, restoreDraft, resetDraft
+} = useProblemDraft({ canHandle, unowned, account, assignees })
 
 const pageTitle = computed(() => {
   if (view.value === 'board' && boardFilters.value.bucket === 'unclaimed') return '待认领池'
@@ -206,40 +216,21 @@ const unclaimedCount = computed(() => summary.value ? Number(summary.value.state
 const dueCount = computed(() => summary.value ? Number(summary.value.due || 0) : null)
 const scopeText = computed(() => summaryScope(summary.value))
 
-function emptyFilters() {
-  return { q: '', state: '', owner: '', kind: '', category: '', bucket: '' }
-}
-
-function beginCallback() {
-  contactedAt.value = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)
-  showCallback.value = true
-}
-
 function clearAccount() {
   account.value = null
   problem.value = null
   device.value = null
   deviceOrders.value = []
   query.value = ''
-  orderId.value = ''
   title.value = ''
   description.value = ''
-  boardItems.value = []
-  boardTotal.value = 0
-  boardFilters.value = emptyFilters()
-  boardPage.value = 0
-  boardCursors.value = [null]
-  summary.value = null
+  resetQueues()
+  resetDraft()
   passwordNotice.value = ''
   accountNotice.value = ''
-  refreshNote.value = ''
   conflict.value = false
   view.value = 'board'
   navOpen.value = false
-  dueItems.value = []
-  mineItems.value = []
-  dueLoaded.value = false
-  mineLoaded.value = false
 }
 
 function syncUrl() {
@@ -448,18 +439,6 @@ const nextAction = computed(() => {
   return '记录跟进或安排回访'
 })
 
-function ownerLabel(value) {
-  return !value || value === 'early' ? '无主' : value
-}
-function unowned(item) {
-  return !item?.owner || item.owner === 'early'
-}
-function canHandle(current) {
-  if (!current || current.state === 'resolved') return false
-  if (account.value?.role === 'admin') return true
-  if (unowned(current)) return false
-  return account.value?.username === current.owner
-}
 const canProcess = computed(() => canHandle(problem.value))
 const handlingDenied = computed(() => {
   const current = problem.value
@@ -470,10 +449,14 @@ const handlingDenied = computed(() => {
 const canHandoff = computed(() => problem.value && problem.value.state !== 'resolved' && !unowned(problem.value)
   && (account.value?.role === 'admin' || account.value?.username === problem.value.owner))
 
+function refreshQueues() {
+  return refreshBoardQueues(returnView.value)
+}
+
 function saveFieldLink(number) {
   return run(async () => {
     await linkFieldOrder(problem.value.id, number, problem.value.version)
-    fieldNumber.value = ''
+    draft.fieldNumber = ''
     await showProblem(problem.value.id)
     await refreshQueues()
   }, { conflict: true })
@@ -481,115 +464,20 @@ function saveFieldLink(number) {
 function saveFieldResult(form) {
   return run(async () => {
     await recordFieldResult(problem.value.id, { ...form, expectedVersion: problem.value.version })
-    fieldReceipt.value = ''
+    draft.fieldReceipt = ''
     await showProblem(problem.value.id)
     await refreshQueues()
   }, { conflict: true })
 }
 
-function snapshotDraft() {
-  return {
-    note: note.value, owner: owner.value, dueAt: dueAt.value, nextStep: nextStep.value, outcome: outcome.value,
-    result: result.value, showCallback: showCallback.value, contactedAt: contactedAt.value, evidenceSource: evidenceSource.value,
-    evidence: evidence.value, withdrawReason: withdrawReason.value, handoffTarget: handoffTarget.value, handoffReason: handoffReason.value,
-    fieldNumber: fieldNumber.value, fieldReceipt: fieldReceipt.value, fieldState: fieldState.value
-  }
-}
-function textOf(draft) {
-  const parts = []
-  if (draft.note) parts.push('跟进「' + draft.note + '」')
-  if (draft.nextStep || draft.owner) parts.push('回访安排「' + [draft.owner, draft.dueAt, draft.nextStep].filter(Boolean).join(' ') + '」')
-  if (draft.result) parts.push('回访结果「' + draft.result + '」')
-  if (draft.handoffReason || draft.handoffTarget) parts.push('转交「' + [draft.handoffTarget, draft.handoffReason].filter(Boolean).join(' ') + '」')
-  if (draft.withdrawReason) parts.push('撤回原因「' + draft.withdrawReason + '」')
-  if (draft.fieldNumber) parts.push('现场单号「' + draft.fieldNumber + '」')
-  if (draft.fieldReceipt) parts.push('现场回执「' + draft.fieldReceipt + '」')
-  return parts.join('；')
-}
-function fillFromServer(current) {
-  const task = current.pendingFollowup
-  owner.value = task?.owner || ''
-  dueAt.value = task?.dueAt?.replace(' ', 'T').slice(0, 16) || ''
-  nextStep.value = task?.nextStep || ''
-  note.value = ''
-  outcome.value = 'continue'
-  result.value = ''
-  showCallback.value = Boolean(task)
-  contactedAt.value = ''
-  evidenceSource.value = ''
-  evidence.value = ''
-  fieldNumber.value = ''
-  fieldReceipt.value = ''
-  fieldState.value = 'complete'
-  refreshNote.value = ''
-}
-function restoreDraft(draft, current) {
-  if (current.state !== 'resolved' && !canHandle(current)) {
-    const kept = textOf(draft)
-    refreshNote.value = (unowned(current) ? '刷新后问题单仍无主，请先认领再处理。' : '刷新后当前账号不能处理这张问题单。') + (kept ? '未提交内容暂不能提交：' + kept : '')
-    return
-  }
-  const active = current.fieldOrders?.some(item => ['linked', 'in_progress'].includes(item.state))
-  const notes = []
-  if (current.state === 'resolved') {
-    notes.push('刷新后问题单已结案，跟进、回访、转交、撤回和现场单都不能再提交。')
-    const kept = textOf(draft)
-    if (kept) notes.push('未提交内容仅作保留，无法提交：' + kept)
-    refreshNote.value = notes.join('')
-    return
-  }
-  note.value = draft.note
-  const canCallback = current.state !== 'field' && !active
-  if (canCallback) {
-    owner.value = draft.owner
-    dueAt.value = draft.dueAt
-    nextStep.value = draft.nextStep
-    showCallback.value = draft.showCallback
-    outcome.value = draft.outcome
-    result.value = draft.result
-    contactedAt.value = draft.contactedAt
-    evidenceSource.value = draft.evidenceSource
-    evidence.value = draft.evidence
-  } else if (draft.nextStep || draft.result || draft.owner || draft.dueAt) {
-    notes.push(current.state === 'field' ? '刷新后问题处于现场服务，回访安排和回访结果暂不能提交。' : '刷新后还有未结束的现场单，请先登记结果，回访暂不能提交。')
-    const kept = [draft.owner, draft.dueAt, draft.nextStep, draft.result].filter(Boolean).join(' ')
-    if (kept) notes.push('未提交的回访内容：' + kept + '。')
-  }
-  const handoffOpen = !unowned(current) && (account.value?.role === 'admin' || account.value?.username === current.owner)
-  if (handoffOpen) {
-    const known = assignees.value.some(item => item.username === draft.handoffTarget)
-    handoffTarget.value = known ? draft.handoffTarget : ''
-    handoffReason.value = draft.handoffReason
-    if (draft.handoffTarget && !known) notes.push('原接收人已不在可转交名单中，请重新选择。转交原因仍保留。')
-  } else if (draft.handoffReason || draft.handoffTarget) {
-    notes.push(unowned(current) ? '刷新后问题单仍无主，需要先认领才能转交。' : '刷新后当前账号不能转交这张问题单。')
-    notes.push('未提交的转交：' + [draft.handoffTarget, draft.handoffReason].filter(Boolean).join(' ') + '。')
-  }
-  const canWithdraw = current.state === 'field' && !active
-  if (canWithdraw) withdrawReason.value = draft.withdrawReason
-  else if (draft.withdrawReason) {
-    notes.push(active ? '刷新后已有未结束的现场单，不能撤回待派单。' : '刷新后问题单已不在待派单阶段，不能撤回。')
-    notes.push('未提交的撤回原因：' + draft.withdrawReason + '。')
-  }
-  if (current.state === 'field' && !active) fieldNumber.value = draft.fieldNumber
-  else if (draft.fieldNumber) notes.push('刷新后不能再关联新的现场单。未提交的现场单号：' + draft.fieldNumber + '。')
-  if (current.state === 'field' && active) {
-    fieldReceipt.value = draft.fieldReceipt
-    fieldState.value = draft.fieldState || 'complete'
-  } else if (draft.fieldReceipt) {
-    notes.push('刷新后现场回执不再适用。未提交的回执：' + draft.fieldReceipt + '。')
-  }
-  refreshNote.value = notes.length ? notes.join('') : '已刷新到最新版本，未提交的内容仍留在表单中。'
-}
-
 async function showProblem(id, options) {
   const preserve = Boolean(options && options.preserveDraft)
-  const draft = preserve ? snapshotDraft() : null
-  problem.value = await loadProblem(id)
-  orderId.value = orderNumber(problem.value)
+  const saved = preserve ? snapshotDraft() : null
+  const [loaded, assignable] = await Promise.all([loadProblem(id), assignableAccounts()])
+  problem.value = loaded
+  assignees.value = assignable
   view.value = 'detail'
-  assignees.value = await assignableAccounts()
-  if (preserve) restoreDraft(draft, problem.value)
+  if (preserve) restoreDraft(saved, problem.value)
   else fillFromServer(problem.value)
   syncUrl()
 }
@@ -616,23 +504,9 @@ function backToList() {
   refreshNote.value = ''
   navOpen.value = false
   syncUrl()
+  run(() => ensureFreshQueue(view.value))
 }
 
-async function loadBoard() {
-  const cursor = boardCursors.value[boardPage.value]
-  const page = await searchProblems({ ...boardFilters.value, cursor, limit: pageSize })
-  boardItems.value = page.items || []
-  boardTotal.value = Number(page.total || 0)
-  boardHasNext.value = Boolean(page.nextCursor)
-  boardCategories.value = page.categories || []
-  if (page.summary) summary.value = page.summary
-  if (page.nextCursor) boardCursors.value[boardPage.value + 1] = page.nextCursor
-}
-async function refreshQueues() {
-  await loadBoard()
-  if (dueLoaded.value) await loadDue(false)
-  if (mineLoaded.value) await loadMine(false)
-}
 function searchBoard(filters) {
   view.value = 'board'
   boardFilters.value = filters
@@ -668,22 +542,6 @@ function openBoard(bucket) {
   syncUrl()
   return run(loadBoard)
 }
-async function loadDue(append) {
-  const page = await dueCallbacks(dueScope.value, append ? dueNext.value : null)
-  const items = page.items || []
-  dueItems.value = append ? dueItems.value.concat(items) : items
-  dueTotal.value = Number(page.total ?? dueItems.value.length)
-  dueNext.value = page.nextCursor || null
-  dueLoaded.value = true
-}
-async function loadMine(append) {
-  const page = await mineProblems(append ? mineNext.value : null)
-  const items = page.items || []
-  mineItems.value = append ? mineItems.value.concat(items) : items
-  mineTotal.value = Number(page.total ?? mineItems.value.length)
-  mineNext.value = page.nextCursor || null
-  mineLoaded.value = true
-}
 function openDue(scope) {
   problem.value = null
   refreshNote.value = ''
@@ -718,8 +576,8 @@ function showNav(next) {
 function withdrawDispatch() {
   return run(async () => {
     const id = problem.value.id
-    await withdrawField(id, withdrawReason.value, problem.value.version)
-    withdrawReason.value = ''
+    await withdrawField(id, draft.withdrawReason, problem.value.version)
+    draft.withdrawReason = ''
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
@@ -747,8 +605,8 @@ function claimRow(item) {
 function handoff() {
   return run(async () => {
     const id = problem.value.id
-    await handoffProblem(id, { target: handoffTarget.value, reason: handoffReason.value, expectedVersion: problem.value.version })
-    handoffReason.value = ''
+    await handoffProblem(id, { target: draft.handoffTarget, reason: draft.handoffReason, expectedVersion: problem.value.version })
+    draft.handoffReason = ''
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
@@ -779,7 +637,7 @@ function toggleAccount(item) {
 function saveSchedule() {
   return run(async () => {
     const id = problem.value.id
-    await scheduleCallback(id, { owner: owner.value, nextStep: nextStep.value, dueAt: dueAt.value, expectedVersion: problem.value.version })
+    await scheduleCallback(id, { owner: draft.owner, nextStep: draft.nextStep, dueAt: draft.dueAt, expectedVersion: problem.value.version })
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
@@ -787,7 +645,7 @@ function saveSchedule() {
 function saveOutcome() {
   return run(async () => {
     const id = problem.value.id
-    await finishCallback(id, { outcome: outcome.value, note: result.value, contactedAt: contactedAt.value, evidenceSource: evidenceSource.value || null, evidence: evidence.value || null, expectedVersion: problem.value.version })
+    await finishCallback(id, { outcome: draft.outcome, note: draft.result, contactedAt: draft.contactedAt, evidenceSource: draft.evidenceSource || null, evidence: draft.evidence || null, expectedVersion: problem.value.version })
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })
@@ -848,8 +706,8 @@ function create() {
 function saveNote() {
   return run(async () => {
     const id = problem.value.id
-    await addFollowup(id, note.value, problem.value.version)
-    note.value = ''
+    await addFollowup(id, draft.note, problem.value.version)
+    draft.note = ''
     await showProblem(id)
     await refreshQueues()
   }, { conflict: true })

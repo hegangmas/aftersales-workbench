@@ -1,12 +1,5 @@
 <template>
   <section v-if="showSection" class="action-block">
-    <h3 v-if="!formsOnly">已关联现场单</h3>
-    <ul v-if="!formsOnly && problem.fieldOrders?.length" class="record-list">
-      <li v-for="item in problem.fieldOrders" :key="item.externalNo">
-        {{ item.externalNo }} · {{ labels[item.state] || item.state }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
-      </li>
-    </ul>
-    <p v-else-if="!formsOnly" class="muted">尚未关联现场单</p>
     <form v-if="editable && problem.state === 'field' && !active" id="action-field" @submit.prevent="$emit('link', number.trim())">
       <label class="field-label" for="field-number">已在智享乐装创建的工单号</label>
       <input id="field-number" class="text-input" :value="number" maxlength="64" @input="$emit('update:number', $event.target.value)">
@@ -36,16 +29,11 @@ const props = defineProps({
   number: { type: String, default: '' },
   receipt: { type: String, default: '' },
   state: { type: String, default: 'complete' },
-  editable: { type: Boolean, default: true },
-  formsOnly: Boolean
+  editable: { type: Boolean, default: true }
 })
 const emit = defineEmits(['link', 'result', 'update:number', 'update:receipt', 'update:state'])
-const labels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }
 const active = computed(() => props.problem.fieldOrders?.find(item => ['linked', 'in_progress'].includes(item.state)))
-const showSection = computed(() => {
-  if (props.formsOnly) return props.editable && props.problem.state === 'field'
-  return props.problem.state === 'field' || Boolean(props.problem.fieldOrders?.length)
-})
+const showSection = computed(() => props.editable && props.problem.state === 'field')
 
 function submitResult() {
   emit('result', { externalNo: active.value.externalNo, state: props.state, receipt: props.receipt.trim() })

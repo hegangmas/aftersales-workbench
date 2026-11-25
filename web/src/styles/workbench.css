@@ -658,10 +658,11 @@ form.settled .secret:has(input:user-invalid) + .error-msg { display: none; }
 .personal-head h1 { margin: 4px 0; font-size: 20px; color: var(--heading); }
 .personal-head p { margin: 0; }
 .personal .link { padding: 0; border: 0; background: none; color: #078478; text-align: left; }
+.retry-link { margin-left: 8px; text-decoration: underline; }
 .case-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
 .case-bar strong { color: var(--heading); font-size: 16px; }
 .pending { color: #a86c08; background: #fff5dd; padding: 4px 8px; border-radius: 5px; }
-.personal-grid { display: grid; grid-template-columns: minmax(200px, .9fr) minmax(320px, 1.6fr) minmax(220px, 1fr); gap: 14px; align-items: stretch; }
+.personal-grid { display: grid; grid-template-columns: minmax(220px, .95fr) minmax(300px, 1.35fr) minmax(280px, 1.1fr); gap: 14px; align-items: start; }
 .personal-grid .panel { min-width: 0; }
 .personal-grid h2 { margin-top: 0; }
 .personal-grid h3 { margin: 22px 0 10px; font-size: 14px; }
