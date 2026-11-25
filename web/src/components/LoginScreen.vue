@@ -158,7 +158,7 @@ defineExpose({
 .identity { justify-content: flex-start; gap: 16px; min-width: 0; }
 .welcome-logo { margin-bottom: 18px; }
 .identity h2 { margin: 0 0 5px; font-size: 20px; font-weight: 600; letter-spacing: 1px; }
-.identity small { color: #a8c8c2; font-size: 10px; letter-spacing: .12em; }
+.identity small { color: #a8c8c2; font-size: 12px; letter-spacing: .12em; }
 .hero { width: min(662px, 100%); margin: auto 0 28px; }
 .eyebrow, .live { display: inline-flex; align-items: center; gap: 8px; }
 .eyebrow { padding: 7px 12px; border: 1px solid #a8e6d52b; border-radius: 30px; background: #e2fff008; color: #c0dfd7; font-size: 12px; }

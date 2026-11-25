@@ -14,8 +14,8 @@
     <header class="topbar">
       <div class="topbar-inner">
         <div class="topbar-brand">
-          <BrandLogo variant="teal" alt="松果" width="96px" />
-          <span>售后工单中台</span>
+          <BrandLogo variant="teal" alt="松果" width="90px" />
+          <span class="topbar-brand-product">售后工单中台</span>
         </div>
 
         <nav class="topbar-nav" aria-label="一级导航">
@@ -67,8 +67,12 @@
         </nav>
 
         <div class="topbar-right">
-          <button v-if="canSeeInternal" type="button" class="bell-btn" title="到期回访提醒" @click="openDue('team')">
-            🔔<span v-if="dueCount" class="bell-badge">{{ dueCount }}</span>
+          <button v-if="canSeeInternal" type="button" class="bell-btn icon-btn" title="到期回访提醒" aria-label="到期回访提醒" @click="openDue('team')">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 7a5 5 0 0 0-10 0c0 4.5-2 6-2 6h14s-2-1.5-2-6" />
+              <path d="M8.5 16a1.7 1.7 0 0 0 3 0" />
+            </svg>
+            <span v-if="dueCount" class="icon-btn__dot" :title="`有 ${dueCount} 条到期回访`"></span>
           </button>
 
           <select

@@ -12,14 +12,21 @@
     @back="dispatchMode = false"
   />
   <article v-else class="fig2-page" :class="{ 'mobile-compact': mobileCompact }">
-    <div v-if="callBarOpen" class="fig2-callbar">
+    <div v-if="callBarOpen" class="call-banner fig2-callbar">
       <div class="callbar-left">
-        <span class="call-dot">📞</span>
-        <strong>来电中 {{ maskedCaller }}</strong>
-        <span>· 通话时长 {{ device?.simulatedCall?.duration || '00:22' }} · {{ device?.simulatedCall?.recordingStatus || '录音中' }}</span>
+        <span class="call-banner__icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 2.5h2.2l1 2.7-1.3 1.1a8.5 8.5 0 0 0 4.3 4.3l1.1-1.3 2.7 1v2.2a1.3 1.3 0 0 1-1.4 1.3A10.7 10.7 0 0 1 2.2 3.9 1.3 1.3 0 0 1 3.5 2.5Z"/>
+          </svg>
+        </span>
+        <strong class="call-banner__status">来电中</strong>
+        <span class="call-banner__phone">{{ maskedCaller }}</span>
+        <span class="call-banner__sep" aria-hidden="true"></span>
+        <span class="call-banner__meta">· 通话时长 {{ device?.simulatedCall?.duration || '00:22' }}</span>
+        <span class="call-banner__meta call-banner__rec">· {{ device?.simulatedCall?.recordingStatus || '录音中' }}</span>
       </div>
       <div class="callbar-right">
-        <span class="wave-icon" aria-hidden="true">ılılı</span>
+        <span class="call-banner__wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
         <button class="icon-close" type="button" aria-label="关闭来电条" @click="callBarOpen = false">×</button>
       </div>
     </div>
@@ -48,7 +55,7 @@
       <section class="panel fig2-left">
         <div class="fig2-card-head">
           <h2>客户与设备档案</h2>
-          <button class="link" type="button" title="在设备页查看完整6段档案" @click="$emit('go-device', problem.device)">›</button>
+          <button class="icon-btn icon-btn--ghost" type="button" title="在设备页查看完整6段档案" aria-label="在设备页查看完整6段档案" @click="$emit('go-device', problem.device)">›</button>
         </div>
         <dl class="fig2-facts">
           <dt>客户：</dt><dd>{{ device?.customerName || '合肥滨湖示例充电站' }}</dd>
@@ -120,12 +127,12 @@
           </div>
 
           <div class="fig2-progress-box">
-            <div class="progress-title">处理进度</div>
-            <div class="progress-track">
-              <div v-for="(step, idx) in progressSteps" :key="step.label" class="progress-step" :class="{ done: idx <= currentStepIndex, current: idx === currentStepIndex }">
-                <small class="step-time">{{ step.time }}</small>
-                <span class="step-dot">{{ idx < currentStepIndex ? '✓' : idx + 1 }}</span>
-                <span class="step-label">{{ step.label }}</span>
+            <div class="progress-title section-label">处理进度</div>
+            <div class="stepper progress-track">
+              <div v-for="(step, idx) in progressSteps" :key="step.label" class="step progress-step" :class="{ 'is-done': idx < currentStepIndex, 'is-current': idx === currentStepIndex, done: idx <= currentStepIndex, current: idx === currentStepIndex }">
+                <span class="step__node step-dot">{{ idx < currentStepIndex ? '✓' : idx + 1 }}</span>
+                <span class="step__label step-label">{{ step.label }}</span>
+                <small class="step__time step-time">{{ step.time }}</small>
               </div>
             </div>
             <div class="progress-caption">受理 → 联系 → 派单 → 上门 → 完工 → 验收闭环</div>
@@ -177,10 +184,10 @@
 
         <!-- 底部 4 个主按钮（严格对齐图 2） -->
         <div class="panel fig2-bottom-actions">
-          <button class="btn primary" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'note' ? '' : 'note'">保存工单</button>
-          <button class="btn action-blue" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'assign' ? '' : 'assign'">直接派单</button>
-          <button class="btn secondary" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'remote' ? '' : 'remote'">远程指导</button>
-          <button class="btn secondary" type="button" :disabled="busy || problem.devicePending" @click="dispatchMode = true">派单至智享乐装</button>
+          <button class="btn btn--primary btn--lg" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'note' ? '' : 'note'">保存工单</button>
+          <button class="btn btn--soft btn--lg" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'assign' ? '' : 'assign'">直接派单</button>
+          <button class="btn btn--secondary btn--lg" type="button" :disabled="busy || !canProcess" @click="activeTool = activeTool === 'remote' ? '' : 'remote'">远程指导</button>
+          <button class="btn btn--secondary btn--lg" type="button" :disabled="busy || problem.devicePending" @click="dispatchMode = true">派单至智享乐装</button>
         </div>
 
         <!-- 展开的工单保存/流转/验收操作面板（不挤占主屏） -->
@@ -246,12 +253,12 @@
         <div class="panel">
           <div class="fig2-card-head">
             <h2>SOP与历史</h2>
-            <button class="link" type="button" @click="$emit('go-knowledge')">查看全部</button>
+            <button class="btn btn--ghost btn--sm" type="button" @click="$emit('go-knowledge')">查看全部</button>
           </div>
           <ul class="fig2-sop-list">
             <li v-for="(step, idx) in combinedSopSteps" :key="idx">
-              <label>
-                <input v-model="checkedSteps" type="checkbox" :value="idx">
+              <label :class="{ 'is-checked': checkedSteps.includes(idx) }">
+                <input v-model="checkedSteps" class="checkbox" type="checkbox" :value="idx">
                 <span class="sop-num">{{ idx + 1 }}</span>
                 <span>{{ step }}</span>
               </label>
@@ -289,11 +296,11 @@
                 <strong>{{ rec.time }} {{ rec.title }}</strong>
                 <small>{{ rec.duration }}</small>
               </div>
-              <div style="display:flex;gap:4px;">
-                <button class="btn secondary btn-xs" type="button" @click="playingId = playingId === rec.id ? '' : rec.id">
+              <div style="display:flex;gap:6px;">
+                <button class="icon-btn" style="width:28px;height:28px;font-size:12px;" type="button" @click="playingId = playingId === rec.id ? '' : rec.id">
                   {{ playingId === rec.id ? '停' : '听' }}
                 </button>
-                <button class="btn secondary btn-xs" type="button" title="模拟下载录音" @click="downloadNotice = rec.id">⬇</button>
+                <button class="icon-btn" style="width:28px;height:28px;font-size:12px;" type="button" title="模拟下载录音" aria-label="模拟下载录音" @click="downloadNotice = rec.id">⬇</button>
               </div>
             </li>
           </ul>

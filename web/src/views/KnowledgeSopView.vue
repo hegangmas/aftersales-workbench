@@ -1,7 +1,7 @@
 <template>
   <section class="sop-workspace" :aria-label="readOnly ? '知识库' : 'SOP 与规则管理'">
-    <!-- 顶部操作条（松果青绿浅色白卡） -->
-    <header class="sop-topbar">
+    <!-- 顶部操作条（只读端无写端色带；管理写端加 3px 琥珀色内顶边） -->
+    <header class="card sop-topbar" :class="{ 'card--write-end': !readOnly }">
       <div class="topbar-left">
         <nav class="sop-breadcrumb" aria-label="当前位置">
           <span>{{ readOnly ? '知识库' : '管理' }}</span>
@@ -13,13 +13,17 @@
           <strong class="crumb-current">{{ activeGroup ? activeGroup.category : '全部故障' }}</strong>
         </nav>
 
-        <span v-if="readOnly" class="mode-badge readonly">
+        <span v-if="readOnly" class="badge badge--lock">
           只读发布版 · 仅展示生效 SOP
         </span>
         <template v-else>
-          <span class="mode-badge admin">唯一写入端</span>
-          <span v-if="displayedEntry" class="version-badge">
-            {{ displayedEntry.version }} · {{ statusLabel(displayedEntry.status) }}
+          <span class="badge badge--warning">唯一写入端</span>
+          <span
+            v-if="displayedEntry"
+            class="badge badge--dot"
+            :class="statusBadgeClass(displayedEntry.status)"
+          >
+            <span class="mono">{{ displayedEntry.version }}</span> · {{ statusLabel(displayedEntry.status) }}
           </span>
         </template>
       </div>
@@ -28,7 +32,7 @@
       <div v-if="!readOnly" class="topbar-actions">
         <button
           type="button"
-          class="btn-sop btn-secondary"
+          class="btn btn--secondary"
           :disabled="busy"
           :aria-expanded="showNewFaultForm"
           @click="toggleNewFaultForm"
@@ -37,7 +41,7 @@
         </button>
         <button
           type="button"
-          class="btn-sop btn-secondary"
+          class="btn btn--secondary"
           :disabled="busy || !displayedEntry"
           @click="handleReview"
         >
@@ -45,7 +49,7 @@
         </button>
         <button
           type="button"
-          class="btn-sop btn-primary"
+          class="btn btn--primary"
           :disabled="busy || !displayedEntry"
           @click="handleTopbarPublish"
         >
@@ -57,7 +61,7 @@
     <!-- 新建故障内联面板（仅管理侧） -->
     <form
       v-if="!readOnly && showNewFaultForm"
-      class="new-fault-panel"
+      class="card new-fault-panel"
       @submit.prevent="submitNewFault(false)"
     >
       <div class="panel-head">
@@ -65,7 +69,7 @@
           <h3>新建故障分类与 SOP</h3>
           <p>保存后写入唯一 SOP 主库；选择「创建并发布」将单向同步至一线只读知识库。</p>
         </div>
-        <button type="button" class="btn-sop btn-secondary btn-sm" @click="cancelNewFault">
+        <button type="button" class="btn btn--secondary btn--sm" @click="cancelNewFault">
           关闭
         </button>
       </div>
@@ -98,7 +102,7 @@
           <input
             v-model.trim="newFault.version"
             type="text"
-            class="sop-input"
+            class="sop-input mono"
             maxlength="20"
             placeholder="V1.0"
             required
@@ -128,12 +132,12 @@
       </label>
 
       <div class="new-fault-stages">
-        <div class="mini-stage">
+        <div class="inset mini-stage">
           <div class="mini-stage-head">
             <strong>第一段：客户可执行（1–3 步）</strong>
             <button
               type="button"
-              class="btn-sop btn-secondary btn-sm"
+              class="btn btn--secondary btn--sm"
               :disabled="newFault.customerSteps.length >= 3"
               @click="addNewFaultStep('customer')"
             >
@@ -155,7 +159,7 @@
             >
             <button
               type="button"
-              class="btn-sop btn-danger-ghost"
+              class="btn btn--danger-outline btn--sm"
               :disabled="newFault.customerSteps.length <= 1"
               @click="removeNewFaultStep('customer', idx)"
             >
@@ -164,12 +168,12 @@
           </div>
         </div>
 
-        <div class="mini-stage">
+        <div class="inset mini-stage">
           <div class="mini-stage-head">
             <strong>第二段：上门验证（4–6 步）</strong>
             <button
               type="button"
-              class="btn-sop btn-secondary btn-sm"
+              class="btn btn--secondary btn--sm"
               :disabled="newFault.onsiteSteps.length >= 3"
               @click="addNewFaultStep('onsite')"
             >
@@ -191,7 +195,7 @@
             >
             <button
               type="button"
-              class="btn-sop btn-danger-ghost"
+              class="btn btn--danger-outline btn--sm"
               :disabled="newFault.onsiteSteps.length <= 1"
               @click="removeNewFaultStep('onsite', idx)"
             >
@@ -213,6 +217,7 @@
             <input
               v-model="newFault.requiredEvidence"
               type="checkbox"
+              class="checkbox"
               :value="opt.value"
             >
             <span>{{ opt.label }}</span>
@@ -254,15 +259,15 @@
       </div>
 
       <div class="new-fault-actions">
-        <button type="button" class="btn-sop btn-secondary" :disabled="busy" @click="cancelNewFault">
+        <button type="button" class="btn btn--secondary" :disabled="busy" @click="cancelNewFault">
           取消
         </button>
-        <button type="submit" class="btn-sop btn-secondary" :disabled="busy">
+        <button type="submit" class="btn btn--secondary" :disabled="busy">
           保存为草稿
         </button>
         <button
           type="button"
-          class="btn-sop btn-primary"
+          class="btn btn--primary"
           :disabled="busy"
           @click="submitNewFault(true)"
         >
@@ -293,10 +298,10 @@
     <!-- 三栏主体结构 -->
     <div class="sop-columns">
       <!-- 左栏：故障分类树 -->
-      <aside class="sop-card tree-card" aria-label="故障分类树">
+      <aside class="card sop-card tree-card" aria-label="故障分类树">
         <div class="card-head">
           <h2>故障分类树</h2>
-          <span class="head-sub">{{ loading ? '加载中…' : `共 ${categoryGroups.length} 个分类` }}</span>
+          <span class="head-sub num">{{ loading ? '加载中…' : `共 ${categoryGroups.length} 个分类` }}</span>
         </div>
 
         <label class="search-box">
@@ -325,9 +330,9 @@
             >
               <span class="tree-node-name">{{ group.category }}</span>
               <span class="tree-node-meta">
-                <span v-if="!readOnly && group.latestDraft" class="tree-draft-dot" title="存在待发布草稿">草稿</span>
-                <span class="tree-ver">{{ group.defaultEntry.version }}</span>
-                <span class="tree-count">
+                <span v-if="!readOnly && group.latestDraft" class="tag tag--warning" title="存在待发布草稿">草稿</span>
+                <span class="tag tag--mono tree-ver">{{ group.defaultEntry.version }}</span>
+                <span class="tree-count num">
                   {{ group.defaultEntry.customerSteps.length + group.defaultEntry.onsiteSteps.length }}步
                 </span>
               </span>
@@ -339,39 +344,39 @@
           <button
             v-if="categorySearch"
             type="button"
-            class="link-btn"
+            class="btn btn--link btn--sm"
             @click="categorySearch = ''"
           >
             清空搜索
           </button>
         </div>
 
-        <footer class="tree-footer">
-          <span>共 {{ categoryGroups.length }} 个分类 &gt;</span>
+        <footer class="tree-footer num">
+          <span>共 {{ categoryGroups.length }} 个分类</span>
           <span v-if="categorySearch" class="tree-filtered">当前匹配 {{ filteredGroups.length }} 个</span>
         </footer>
       </aside>
 
       <!-- 中栏：两段式 SOP 步骤卡片 -->
-      <section class="sop-card sop-main-card" aria-label="两段式 SOP 步骤">
+      <section class="card sop-card sop-main-card" aria-label="两段式 SOP 步骤">
         <template v-if="displayedEntry">
           <div class="card-head main-head">
             <div class="main-title-wrap">
               <h2>{{ displayedEntry.title || activeGroup.category }}</h2>
-              <span class="version-badge">
-                {{ readOnly ? '生效版本：' : '当前查看：' }}{{ displayedEntry.version }}
+              <span class="badge badge--brand">
+                {{ readOnly ? '生效版本：' : '当前查看：' }}<span class="mono">{{ displayedEntry.version }}</span>
               </span>
               <span
                 v-if="!readOnly && displayedEntry.status"
-                class="version-state"
-                :class="statusTone(displayedEntry.status)"
+                class="badge badge--dot"
+                :class="statusBadgeClass(displayedEntry.status)"
               >
                 {{ statusLabel(displayedEntry.status) }}
               </span>
               <button
                 v-if="!readOnly && isViewingNonDefaultVersion"
                 type="button"
-                class="link-btn"
+                class="btn btn--link btn--sm"
                 @click="selectedVersionId = null"
               >
                 返回默认版本
@@ -382,20 +387,23 @@
               <button
                 v-if="!isEditingSop"
                 type="button"
-                class="btn-sop btn-secondary"
+                class="btn btn--secondary btn--sm"
                 :disabled="busy"
                 @click="enterEditSop"
               >
-                编辑 SOP
+                <svg class="btn-icon-14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M11.5 2.5a1.4 1.4 0 0 1 2 2L5.5 12.5l-3 .75.75-3 8.25-7.75Z" />
+                </svg>
+                <span>编辑 SOP</span>
               </button>
               <template v-else>
-                <button type="button" class="btn-sop btn-secondary" :disabled="busy" @click="cancelEditSop">
+                <button type="button" class="btn btn--secondary btn--sm" :disabled="busy" @click="cancelEditSop">
                   取消
                 </button>
-                <button type="button" class="btn-sop btn-secondary" :disabled="busy" @click="saveEditSop(false)">
+                <button type="button" class="btn btn--secondary btn--sm" :disabled="busy" @click="saveEditSop(false)">
                   保存草稿
                 </button>
-                <button type="button" class="btn-sop btn-primary" :disabled="busy" @click="saveEditSop(true)">
+                <button type="button" class="btn btn--primary btn--sm" :disabled="busy" @click="saveEditSop(true)">
                   保存并发布
                 </button>
               </template>
@@ -403,7 +411,7 @@
           </div>
 
           <div class="sop-meta-strip">
-            <span v-if="displayedEntry.evidenceMode" class="meta-chip">
+            <span v-if="displayedEntry.evidenceMode" class="tag">
               取证模式：{{ displayedEntry.evidenceMode }}
             </span>
             <span class="sop-summary-note">
@@ -412,7 +420,7 @@
           </div>
 
           <!-- 编辑模式下的元数据配置（仅管理侧） -->
-          <div v-if="!readOnly && isEditingSop" class="sop-edit-meta">
+          <div v-if="!readOnly && isEditingSop" class="inset sop-edit-meta">
             <div class="new-fault-grid three">
               <label class="form-field">
                 <span class="field-label">SOP 标题 *</span>
@@ -420,7 +428,7 @@
               </label>
               <label class="form-field">
                 <span class="field-label">新版本号 *</span>
-                <input v-model.trim="sopDraft.version" type="text" class="sop-input" maxlength="20">
+                <input v-model.trim="sopDraft.version" type="text" class="sop-input mono" maxlength="20">
               </label>
               <label class="form-field">
                 <span class="field-label">取证模式</span>
@@ -442,21 +450,21 @@
                   class="evidence-check-pill"
                   :class="{ checked: sopDraft.requiredEvidence.includes(opt.value) }"
                 >
-                  <input v-model="sopDraft.requiredEvidence" type="checkbox" :value="opt.value">
+                  <input v-model="sopDraft.requiredEvidence" type="checkbox" class="checkbox" :value="opt.value">
                   <span>{{ opt.label }}</span>
                 </label>
               </div>
             </div>
           </div>
 
-          <!-- 第一段：客户可执行 1-3（严格 ≤3 步） -->
+          <!-- 第一段：客户可执行 1-3（无框分组 + 编号圆点 + 1px 分隔线） -->
           <div class="sop-stage">
             <div class="stage-head">
               <div class="stage-title">
-                <span class="stage-pill stage-customer">第一段</span>
+                <span class="tag tag--brand">第一段</span>
                 <h3>客户可执行 1-3</h3>
               </div>
-              <span class="stage-limit">
+              <span class="stage-limit num">
                 控制在 3 步以内（当前 {{ displayedCustomerSteps.length }}/3 步）
               </span>
             </div>
@@ -485,7 +493,7 @@
                     >
                     <button
                       type="button"
-                      class="btn-sop btn-danger-ghost"
+                      class="btn btn--danger-outline btn--sm"
                       :disabled="sopDraft.customerSteps.length <= 1"
                       @click="removeDraftStep('customer', idx)"
                     >
@@ -499,13 +507,13 @@
             <div v-if="!readOnly && isEditingSop" class="stage-edit-bar">
               <button
                 type="button"
-                class="btn-sop btn-secondary btn-sm"
+                class="btn btn--secondary btn--sm"
                 :disabled="sopDraft.customerSteps.length >= 3"
                 @click="addDraftStep('customer')"
               >
                 + 新增客户步骤
               </button>
-              <span class="limit-hint">
+              <span class="limit-hint num">
                 {{ sopDraft.customerSteps.length >= 3 ? '已达上限：客户可执行最多 3 步' : '还可新增 ' + (3 - sopDraft.customerSteps.length) + ' 步' }}
               </span>
             </div>
@@ -515,15 +523,15 @@
           <div class="sop-stage stage-onsite-wrap">
             <div class="stage-head">
               <div class="stage-title">
-                <span class="stage-pill stage-onsite">第二段</span>
+                <span class="tag tag--warning">第二段</span>
                 <h3>上门验证 4-6</h3>
               </div>
-              <span class="stage-limit">
+              <span class="stage-limit num">
                 现场核验与换装留痕（第 4–{{ 3 + displayedOnsiteSteps.length }} 步）
               </span>
             </div>
 
-            <ol class="step-list">
+            <ol class="step-list step-list--warning">
               <li
                 v-for="(step, idx) in displayedOnsiteSteps"
                 :key="'onsite-' + idx"
@@ -547,7 +555,7 @@
                     >
                     <button
                       type="button"
-                      class="btn-sop btn-danger-ghost"
+                      class="btn btn--danger-outline btn--sm"
                       :disabled="sopDraft.onsiteSteps.length <= 1"
                       @click="removeDraftStep('onsite', idx)"
                     >
@@ -561,13 +569,13 @@
             <div v-if="!readOnly && isEditingSop" class="stage-edit-bar">
               <button
                 type="button"
-                class="btn-sop btn-secondary btn-sm"
+                class="btn btn--secondary btn--sm"
                 :disabled="sopDraft.onsiteSteps.length >= 3"
                 @click="addDraftStep('onsite')"
               >
                 + 新增上门步骤
               </button>
-              <span class="limit-hint">
+              <span class="limit-hint num">
                 {{ sopDraft.onsiteSteps.length >= 3 ? '已达上限：上门验证第 4-6 步' : '还可新增 ' + (3 - sopDraft.onsiteSteps.length) + ' 步' }}
               </span>
             </div>
@@ -583,13 +591,13 @@
         <!-- ===== 分支 1：只读知识库（readOnly === true）===== -->
         <!-- 严禁出现任何编辑控件、任何阈值数字与换装自动审批条件 -->
         <template v-if="readOnly">
-          <section class="sop-card">
+          <section class="card sop-card">
             <div class="card-head">
               <h2>级别提示与所需证据</h2>
               <span class="head-sub">一线指引</span>
             </div>
 
-            <div v-if="displayedEntry" class="readonly-hint-box">
+            <div v-if="displayedEntry" class="inset readonly-hint-box">
               <span class="hint-label">该故障所属级别提示</span>
               <p class="hint-text">
                 {{ displayedEntry.gradeHint || '请严格按两段式 SOP 收集完整故障现象与对应记录，由系统与质检复核判定。' }}
@@ -602,7 +610,7 @@
             <div class="required-evidence-block">
               <div class="sub-head">
                 <h3>所需证据清单</h3>
-                <span class="rule-summary">{{ readonlyEvidenceList.length }} 项要求</span>
+                <span class="tag num">{{ readonlyEvidenceList.length }} 项要求</span>
               </div>
 
               <ul v-if="readonlyEvidenceList.length" class="evidence-checklist">
@@ -613,7 +621,7 @@
                 >
                   <div class="evidence-item-top">
                     <strong>{{ item.label }}</strong>
-                    <span class="evidence-tag teal">建议必传</span>
+                    <span class="tag tag--brand">建议必传</span>
                   </div>
                   <small>{{ item.tip }}</small>
                 </li>
@@ -622,7 +630,7 @@
             </div>
           </section>
 
-          <section class="sop-card">
+          <section class="card sop-card">
             <div class="card-head">
               <h2>标准证据样例说明</h2>
               <span class="head-sub">采集规范</span>
@@ -635,15 +643,15 @@
                 class="sample-guide-item"
               >
                 <div class="sample-head">
-                  <span class="evidence-tag teal-deep">{{ sample.label }}</span>
+                  <span class="tag">{{ sample.label }}</span>
                 </div>
                 <p class="sample-desc">{{ sample.sample }}</p>
               </li>
             </ul>
 
-            <footer v-if="displayedEntry" class="readonly-meta-footer">
-              <span>生效版本：{{ displayedEntry.version }}</span>
-              <span v-if="displayedEntry.updatedAt">更新于 {{ formatTimestamp(displayedEntry.updatedAt) }}</span>
+            <footer v-if="displayedEntry" class="readonly-meta-footer num">
+              <span>生效版本：<span class="mono">{{ displayedEntry.version }}</span></span>
+              <span v-if="displayedEntry.updatedAt" class="mono">更新于 {{ formatTimestamp(displayedEntry.updatedAt) }}</span>
             </footer>
           </section>
         </template>
@@ -651,25 +659,29 @@
         <!-- ===== 分支 2：管理 → SOP 与规则（readOnly === false，唯一写端）===== -->
         <template v-else>
           <!-- 上卡：仅管理侧可见的 A/B/C 阈值与换装自动审批条件 -->
-          <section class="sop-card">
-            <div class="card-head">
-              <div>
+          <section class="card sop-card">
+            <div class="card-head card-head-rules">
+              <div class="rules-head-title">
                 <h2>分级阈值与审批规则</h2>
-                <span class="admin-only-pill">仅管理侧可见 · 不对一线展示</span>
+                <span class="tag tag--warning">仅管理侧可见 · 不对一线展示</span>
               </div>
               <button
                 v-if="displayedEntry && !isEditingRules"
                 type="button"
-                class="btn-sop btn-secondary btn-sm"
+                class="btn btn--secondary btn--sm"
                 :disabled="busy"
                 @click="enterEditRules"
               >
-                ⚙ 设置规则
+                <svg class="btn-icon-14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="8" cy="8" r="2.2" />
+                  <path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M12.4 3.6l-1 1M4.6 11.4l-1 1" />
+                </svg>
+                <span>设置规则</span>
               </button>
               <button
                 v-else-if="displayedEntry"
                 type="button"
-                class="btn-sop btn-secondary btn-sm"
+                class="btn btn--secondary btn--sm"
                 :disabled="busy"
                 @click="cancelRuleChanges"
               >
@@ -678,10 +690,10 @@
             </div>
 
             <template v-if="displayedEntry">
-              <!-- A/B/C 阈值配置 -->
+              <!-- A/B/C 阈值配置（浅灰底 .inset + 左侧 3px 语义色条） -->
               <div class="grade-list" aria-label="A/B/C 分级阈值配置">
-                <div class="grade-item grade-a">
-                  <span class="grade-chip">A级 阈值条件</span>
+                <div class="inset grade-item grade-a">
+                  <span class="tag tag--success grade-tag">A级 阈值条件</span>
                   <input
                     v-if="isEditingRules"
                     v-model.trim="ruleDraft.gradeThresholds.A"
@@ -691,10 +703,10 @@
                     aria-label="A级阈值条件"
                     placeholder="填写 A 级触发阈值"
                   >
-                  <small v-else>{{ ruleDraft.gradeThresholds.A || '未配置 A 级阈值' }}</small>
+                  <p v-else class="grade-text">{{ ruleDraft.gradeThresholds.A || '未配置 A 级阈值' }}</p>
                 </div>
-                <div class="grade-item grade-b">
-                  <span class="grade-chip">B级 阈值条件</span>
+                <div class="inset grade-item grade-b">
+                  <span class="tag tag--warning grade-tag">B级 阈值条件</span>
                   <input
                     v-if="isEditingRules"
                     v-model.trim="ruleDraft.gradeThresholds.B"
@@ -704,10 +716,10 @@
                     aria-label="B级阈值条件"
                     placeholder="填写 B 级触发阈值"
                   >
-                  <small v-else>{{ ruleDraft.gradeThresholds.B || '未配置 B 级阈值' }}</small>
+                  <p v-else class="grade-text">{{ ruleDraft.gradeThresholds.B || '未配置 B 级阈值' }}</p>
                 </div>
-                <div class="grade-item grade-c">
-                  <span class="grade-chip">C级 阈值条件（禁止换装）</span>
+                <div class="inset grade-item grade-c">
+                  <span class="tag tag--danger grade-tag">C级 阈值条件（禁止换装）</span>
                   <input
                     v-if="isEditingRules"
                     v-model.trim="ruleDraft.gradeThresholds.C"
@@ -717,22 +729,22 @@
                     aria-label="C级阈值条件"
                     placeholder="填写 C 级判定阈值"
                   >
-                  <small v-else>{{ ruleDraft.gradeThresholds.C || '未配置 C 级阈值' }}</small>
+                  <p v-else class="grade-text">{{ ruleDraft.gradeThresholds.C || '未配置 C 级阈值' }}</p>
                 </div>
               </div>
 
-              <!-- 换装自动审批条件（含开关） -->
+              <!-- 换装自动审批条件（48px 分隔线列表 + 自定义 .switch） -->
               <div class="auto-rules">
                 <div class="sub-head">
                   <h3>换装自动审批条件</h3>
                   <div class="sub-head-right">
-                    <span class="rule-summary">
+                    <span class="badge badge--success num">
                       {{ autoPassCount }}/{{ ruleDraft.autoApprovalRules.length }} 项自动通过
                     </span>
                     <button
                       v-if="isEditingRules"
                       type="button"
-                      class="btn-sop btn-secondary btn-sm"
+                      class="btn btn--secondary btn--sm"
                       @click="addAutoRule"
                     >
                       + 条件
@@ -756,32 +768,33 @@
                         :aria-label="'自动审批条件 ' + (rIdx + 1)"
                         placeholder="请输入审批条件名称"
                       >
-                      <strong v-else>{{ rule.label }}</strong>
+                      <div v-else class="rule-label-text">
+                        <span v-if="splitRuleLabel(rule.label).prefix" class="rule-prefix mono">
+                          {{ splitRuleLabel(rule.label).prefix }}
+                        </span>
+                        <span>{{ splitRuleLabel(rule.label).text }}</span>
+                      </div>
                       <small v-if="rule.desc">{{ rule.desc }}</small>
                     </div>
 
                     <div class="rule-actions">
-                      <button
-                        type="button"
-                        role="switch"
-                        class="rule-switch"
-                        :class="{ on: rule.enabled }"
-                        :aria-checked="rule.enabled"
-                        :aria-label="rule.label + '：当前为' + (rule.enabled ? '自动通过' : '人工复核')"
-                        @click="toggleAutoRule(rule)"
-                      >
-                        <span class="switch-track" aria-hidden="true">
-                          <span class="switch-thumb" />
-                        </span>
-                        <span class="switch-label">
+                      <label class="rule-switch-control">
+                        <input
+                          type="checkbox"
+                          class="switch"
+                          :checked="rule.enabled"
+                          :aria-label="rule.label + '：当前为' + (rule.enabled ? '自动通过' : '人工复核')"
+                          @change="toggleAutoRule(rule)"
+                        >
+                        <span class="switch-state" :class="{ on: rule.enabled }">
                           {{ rule.enabled ? '自动通过' : '人工复核' }}
                         </span>
-                      </button>
+                      </label>
 
                       <button
                         v-if="isEditingRules && ruleDraft.autoApprovalRules.length > 1"
                         type="button"
-                        class="btn-sop btn-danger-ghost"
+                        class="btn btn--danger-outline btn--sm"
                         @click="removeAutoRule(rIdx)"
                       >
                         删
@@ -797,7 +810,7 @@
                     <input
                       v-model.trim="ruleDraft.version"
                       type="text"
-                      class="sop-input version-mini-input"
+                      class="sop-input mono version-mini-input"
                       maxlength="20"
                       aria-label="规则保存版本号"
                       placeholder="版本号"
@@ -806,7 +819,7 @@
                   <div class="rule-save-actions">
                     <button
                       type="button"
-                      class="btn-sop btn-secondary btn-sm"
+                      class="btn btn--secondary btn--sm"
                       :disabled="busy"
                       @click="cancelRuleChanges"
                     >
@@ -814,7 +827,7 @@
                     </button>
                     <button
                       type="button"
-                      class="btn-sop btn-secondary btn-sm"
+                      class="btn btn--secondary btn--sm"
                       :disabled="busy"
                       @click="saveRuleChanges(false)"
                     >
@@ -822,7 +835,7 @@
                     </button>
                     <button
                       type="button"
-                      class="btn-sop btn-primary btn-sm"
+                      class="btn btn--primary btn--sm"
                       :disabled="busy"
                       @click="saveRuleChanges(true)"
                     >
@@ -835,10 +848,10 @@
           </section>
 
           <!-- 下卡：版本记录（支持点击草稿条目的「发布」调用 publishAdminSop(id)） -->
-          <section class="sop-card">
+          <section class="card sop-card">
             <div class="card-head">
               <h2>版本记录</h2>
-              <span class="head-sub">共 {{ activeGroup ? activeGroup.versions.length : 0 }} 个版本</span>
+              <span class="head-sub num">共 {{ activeGroup ? activeGroup.versions.length : 0 }} 个版本</span>
             </div>
 
             <ul v-if="activeGroup && activeGroup.versions.length" class="version-list">
@@ -851,16 +864,19 @@
               >
                 <div class="version-top">
                   <strong class="version-label">
-                    {{ ver.version }} · {{ statusLabel(ver.status) }}
+                    <span class="mono">{{ ver.version }}</span> · {{ statusLabel(ver.status) }}
                   </strong>
                   <div class="version-top-right">
-                    <span class="version-state" :class="statusTone(ver.status)">
+                    <span
+                      class="badge"
+                      :class="[ver.status !== 'archived' ? 'badge--dot' : '', statusBadgeClass(ver.status)]"
+                    >
                       {{ statusTag(ver.status) }}
                     </span>
                     <button
                       v-if="ver.status === 'draft'"
                       type="button"
-                      class="btn-sop btn-primary btn-xs"
+                      class="btn btn--primary btn--sm"
                       :disabled="busy"
                       @click.stop="publishVersion(ver)"
                     >
@@ -868,7 +884,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="version-meta">
+                <div class="version-meta mono">
                   <span>{{ ver.updatedBy || 'system' }}</span>
                   <span>{{ formatTimestamp(ver.updatedAt) }}</span>
                 </div>
@@ -1694,6 +1710,12 @@ function statusTone(status) {
   return 'archived'
 }
 
+function statusBadgeClass(status) {
+  if (status === 'published') return 'badge--success'
+  if (status === 'draft') return 'badge--warning'
+  return ''
+}
+
 function statusLabel(status) {
   if (status === 'published') return '已发布'
   if (status === 'draft') return '草稿（待发布）'
@@ -1706,6 +1728,15 @@ function statusTag(status) {
   return '已归档'
 }
 
+function splitRuleLabel(raw) {
+  const text = String(raw || '').trim()
+  const match = text.match(/^(条件\s*\d+)\s+(.+)$/)
+  if (match) {
+    return { prefix: match[1].replace(/\s+/g, ''), text: match[2] }
+  }
+  return { prefix: '', text }
+}
+
 function formatTimestamp(raw) {
   if (!raw) return ''
   return String(raw).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 16)
@@ -1715,10 +1746,10 @@ function formatTimestamp(raw) {
 <style scoped>
 .sop-workspace {
   display: grid;
-  gap: 14px;
-  color: var(--ink, #334155);
-  font-size: 13px;
-  line-height: 1.5;
+  gap: var(--gutter);
+  color: var(--text-primary);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body-sm);
 }
 
 .visually-hidden {
@@ -1730,17 +1761,41 @@ function formatTimestamp(raw) {
   white-space: nowrap;
 }
 
-/* 顶部操作条：浅色白卡片，松果青绿风格 */
+.btn-icon-14 {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.badge--lock::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background: currentColor;
+  -webkit-mask: var(--icon-lock) center / contain no-repeat;
+  mask: var(--icon-lock) center / contain no-repeat;
+}
+
+.tag--success {
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+
+/* 顶部操作条 */
 .sop-topbar {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #fff;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 10px;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: var(--space-2) var(--card-px);
+}
+
+.sop-topbar.card--write-end {
+  box-shadow: inset 0 3px 0 var(--warning-solid), var(--elev-1);
 }
 
 .topbar-left {
@@ -1755,158 +1810,53 @@ function formatTimestamp(raw) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: var(--muted, #8a96a5);
+  font-size: var(--fs-body-sm);
+  color: var(--text-tertiary);
 }
 
 .crumb-sep {
-  color: #cbd5e1;
+  color: var(--text-disabled);
 }
 
 .crumb-current {
-  color: var(--heading, #0f172a);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.mode-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.mode-badge.readonly {
-  background: #e8f6f4;
-  border: 1px solid #c5e4e1;
-  color: #0f766e;
-}
-
-.mode-badge.admin {
-  background: #fff5dd;
-  border: 1px solid #f3e2b8;
-  color: #a86c08;
-}
-
-.admin-only-pill {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 2px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #fff5dd;
-  border: 1px solid #f3e2b8;
-  color: #a86c08;
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-}
-
-/* 按钮体系：对齐松果青绿主题 */
-.btn-sop {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 6px 13px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.btn-sop:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-sm {
-  min-height: 30px;
-  padding: 4px 10px;
-}
-
-.btn-xs {
-  min-height: 24px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 5px;
-}
-
-.btn-primary {
-  border: 1px solid #0f766e;
-  background: #0f766e;
-  color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #0d9488;
-  border-color: #0d9488;
-}
-
-.btn-secondary {
-  border: 1px solid #dfe5ec;
-  background: #fff;
-  color: #475569;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  border-color: #0d9488;
-  color: #0f766e;
-  background: #e8f6f4;
-}
-
-.btn-danger-ghost {
-  border: 1px solid #f3c6c3;
-  background: #fff;
-  color: #c0362c;
-  min-height: 32px;
-  padding: 4px 10px;
-}
-
-.btn-danger-ghost:hover:not(:disabled) {
-  background: #fdecec;
+  gap: var(--space-2);
 }
 
 /* 新建故障表单面板 */
 .new-fault-panel {
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid #c5e4e1;
-  border-radius: 10px;
+  gap: var(--space-3);
+  padding: var(--card-py) var(--card-px);
+  border-color: var(--brand-200);
 }
 
 .panel-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .panel-head h3 {
   margin: 0;
-  font-size: 15px;
-  color: var(--heading, #0f172a);
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
 }
 
 .panel-head p {
   margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--muted, #8a96a5);
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 .new-fault-grid {
@@ -1922,77 +1872,77 @@ function formatTimestamp(raw) {
 .new-fault-stages {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mini-stage {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  background: #fafcfd;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 8px;
+  gap: var(--space-2);
 }
 
 .mini-stage-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
+  font-size: var(--fs-body-sm);
+  color: var(--text-primary);
 }
 
 .mini-step-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .form-field {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .field-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #334155;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
 }
 
 .evidence-checkbox-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .evidence-check-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid #dce3ec;
-  border-radius: 999px;
-  background: #fff;
-  font-size: 12px;
-  color: #475569;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
   cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
 }
 
 .evidence-check-pill.checked {
-  border-color: #0d9488;
-  background: #e8f6f4;
-  color: #0f766e;
-  font-weight: 600;
+  border-color: var(--brand-200);
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-weight: var(--fw-semibold);
 }
 
-.evidence-check-pill input {
-  accent-color: #0f766e;
+.evidence-check-pill .checkbox {
+  margin: 0;
 }
 
 .new-fault-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* 页内状态提示 */
@@ -2000,28 +1950,28 @@ function formatTimestamp(raw) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body-sm);
 }
 
 .status-banner.info {
-  background: #e8f6f4;
-  border: 1px solid #c5e4e1;
-  color: #0f766e;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  color: var(--brand-700);
 }
 
 .status-banner.warn {
-  background: #fff5dd;
-  border: 1px solid #f3e2b8;
-  color: #a86c08;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-fg);
 }
 
 .status-banner.danger {
-  background: #fdecec;
-  border: 1px solid #f5c2be;
-  color: #c0362c;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-fg);
 }
 
 .banner-close {
@@ -2037,38 +1987,48 @@ function formatTimestamp(raw) {
 /* 三栏主体 */
 .sop-columns {
   display: grid;
-  grid-template-columns: minmax(210px, 240px) minmax(0, 1.45fr) minmax(290px, 340px);
-  gap: 14px;
+  grid-template-columns: minmax(220px, 252px) minmax(0, 1.45fr) minmax(300px, 356px);
+  gap: var(--gutter);
   align-items: start;
 }
 
 .sop-card {
-  min-width: 0;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px #132c4906;
+  padding: var(--card-py) var(--card-px) var(--space-5);
+}
+
+.sop-main-card {
+  min-height: 540px;
 }
 
 .card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .card-head h2 {
   margin: 0;
-  color: var(--heading, #0f172a);
-  font-size: 15px;
-  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--fs-title-sm);
+  line-height: var(--lh-title-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.card-head-rules {
+  align-items: flex-start;
+}
+
+.rules-head-title {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
 }
 
 .head-sub {
-  color: var(--muted, #8a96a5);
-  font-size: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-caption);
   white-space: nowrap;
 }
 
@@ -2081,26 +2041,31 @@ function formatTimestamp(raw) {
 .search-box {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 6px 10px;
-  margin-bottom: 10px;
-  border: 1px solid #dce3ec;
-  border-radius: 8px;
-  background: #fff;
+  gap: var(--space-2);
+  height: var(--control-h-md);
+  padding: 0 10px;
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.search-box:hover {
+  border-color: var(--border-hover);
 }
 
 .search-box:focus-within {
-  border-color: #0d9488;
-  box-shadow: 0 0 0 3px #0d94881f;
+  border-color: var(--brand-600);
+  box-shadow: var(--focus-ring);
 }
 
 .search-box svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   fill: none;
-  stroke: #94a3b8;
-  stroke-width: 2;
+  stroke: var(--text-tertiary);
+  stroke-width: 1.75;
   flex: none;
 }
 
@@ -2109,9 +2074,20 @@ function formatTimestamp(raw) {
   min-width: 0;
   border: 0;
   outline: 0;
+  box-shadow: none;
   background: transparent;
-  color: #334155;
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: var(--fs-body-sm);
+}
+
+.search-box input::placeholder {
+  color: var(--text-disabled);
+}
+
+.search-box input:focus,
+.search-box input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .category-tree {
@@ -2119,7 +2095,7 @@ function formatTimestamp(raw) {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .tree-node {
@@ -2127,40 +2103,31 @@ function formatTimestamp(raw) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px 8px 12px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: #475569;
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .tree-node:hover {
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .tree-node.active {
-  background: #e8f6f4;
-  border-color: #cdebe6;
-  color: #0f766e;
-  font-weight: 700;
-}
-
-.tree-node.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 3px;
-  background: #0d9488;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-weight: var(--fw-semibold);
+  box-shadow: inset 3px 0 0 var(--brand-600);
 }
 
 .tree-node-name {
@@ -2173,154 +2140,112 @@ function formatTimestamp(raw) {
 .tree-node-meta {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: none;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.tree-draft-dot {
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: #fff5dd;
-  color: #a86c08;
-  font-size: 10px;
-  font-weight: 600;
 }
 
 .tree-ver {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: #f1f5f9;
-  color: #64748b;
+  font-size: var(--fs-caption);
 }
 
 .tree-node.active .tree-ver {
-  background: #fff;
-  color: #0f766e;
+  background: var(--bg-surface);
+  color: var(--brand-700);
 }
 
 .tree-count {
-  color: #94a3b8;
+  min-width: 28px;
+  text-align: right;
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 .tree-node.active .tree-count {
-  color: #0d9488;
+  color: var(--brand-700);
 }
 
 .tree-empty {
-  padding: 20px 8px;
+  padding: 24px 8px;
   text-align: center;
-  color: var(--muted, #8a96a5);
-  font-size: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-caption);
 }
 
 .tree-empty p {
   margin: 0 0 6px;
 }
 
-.link-btn {
-  border: 0;
-  background: transparent;
-  color: #0f766e;
-  font-size: 12px;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
 .tree-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line, #eaeef2);
-  color: var(--muted, #8a96a5);
-  font-size: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--fs-caption);
 }
 
 .tree-filtered {
-  color: #0f766e;
+  color: var(--brand-700);
 }
 
-/* 中栏：两段式 SOP */
+/* 中栏：两段式 SOP（无三层框套框） */
 .main-head {
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .main-title-wrap {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .main-title-wrap h2 {
-  font-size: 16px;
-}
-
-.version-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  background: #e8f6f4;
-  border: 1px solid #c5e4e1;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
 }
 
 .main-head-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .sop-meta-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.meta-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  background: #f1f5f9;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 600;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sop-summary-note {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-caption);
 }
 
 .sop-edit-meta {
   display: grid;
   gap: 10px;
-  padding: 12px;
-  margin-bottom: 12px;
-  background: #f8fbfb;
-  border: 1px solid #d7eeeb;
-  border-radius: 10px;
+  margin-bottom: var(--space-4);
 }
 
 .sop-stage {
-  padding: 14px;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 10px;
-  background: #fafcfd;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .stage-onsite-wrap {
-  margin-top: 12px;
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .stage-head {
@@ -2328,145 +2253,128 @@ function formatTimestamp(raw) {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .stage-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+}
+
+.stage-title .tag {
+  font-weight: var(--fw-semibold);
 }
 
 .stage-title h3 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--heading, #0f172a);
-}
-
-.stage-pill {
-  padding: 1px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.stage-customer {
-  background: #e8f6f4;
-  color: #0f766e;
-}
-
-.stage-onsite {
-  background: #fff5dd;
-  color: #a86c08;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
 }
 
 .stage-limit {
-  font-size: 12px;
-  color: var(--muted, #8a96a5);
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 .step-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
 }
 
 .step-item {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  padding: 10px 12px;
-  background: #fff;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.step-item + .step-item {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .step-index {
-  display: inline-grid;
+  flex: none;
+  display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: #e8f6f4;
-  border: 1px solid #0d9488;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-family: var(--font-num);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
+.step-list--warning .step-index,
 .step-index.onsite {
-  background: #fff5dd;
-  border-color: #eab65f;
-  color: #a86c08;
+  background: var(--warning-bg);
+  color: var(--warning-fg);
 }
 
 .step-body {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .step-desc {
-  margin: 2px 0 0;
-  color: #334155;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.evidence-tag {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.evidence-tag.teal {
-  background: #e8f6f4;
-  color: #0f766e;
-}
-
-.evidence-tag.teal-deep {
-  background: #d7eeeb;
-  color: #0c5f59;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 /* SOP 编辑态 */
 .step-editor {
+  flex: 1 1 auto;
+  min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .step-editor-inline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .sop-input {
   width: 100%;
   min-width: 0;
-  min-height: 34px;
-  padding: 5px 10px;
-  border: 1px solid #dce3ec;
-  border-radius: 7px;
-  background: #fff;
-  color: #334155;
-  font-size: 12px;
+  height: var(--control-h-md);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: var(--fs-body-sm);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-.sop-input:focus {
-  border-color: #0d9488;
-  box-shadow: 0 0 0 3px #0d94881f;
+.sop-input::placeholder {
+  color: var(--text-disabled);
+}
+
+.sop-input:hover {
+  border-color: var(--border-hover);
+}
+
+.sop-input:focus,
+.sop-input:focus-visible {
+  border-color: var(--brand-600);
+  box-shadow: var(--focus-ring);
   outline: none;
 }
 
@@ -2475,54 +2383,54 @@ function formatTimestamp(raw) {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #dce3ec;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-default);
 }
 
 .limit-hint {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 /* 右栏：通用与只读知识库样式 */
 .sop-right-col {
   display: grid;
-  gap: 14px;
+  gap: var(--gutter);
 }
 
 .readonly-hint-box {
   display: grid;
   gap: 6px;
-  padding: 12px;
-  background: #f5fbfa;
-  border: 1px solid #cdebe6;
-  border-radius: 8px;
+  background: var(--brand-50);
+  border: 0;
 }
 
 .hint-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #0f766e;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--brand-700);
 }
 
 .hint-text {
   margin: 0;
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 500;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-semibold);
+  color: var(--brand-900);
 }
 
 .hint-footnote {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
 }
 
 .required-evidence-block {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line, #eaeef2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .evidence-checklist,
@@ -2530,143 +2438,131 @@ function formatTimestamp(raw) {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
 }
 
 .evidence-check-item,
 .sample-guide-item {
-  padding: 9px 10px;
-  background: #fafcfd;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 8px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.evidence-check-item + .evidence-check-item,
+.sample-guide-item + .sample-guide-item {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .evidence-item-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 3px;
+  gap: var(--space-2);
+  margin-bottom: 4px;
 }
 
 .evidence-item-top strong {
-  font-size: 12px;
-  color: #0f172a;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
 }
 
 .evidence-check-item small {
   display: block;
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
 }
 
 .sample-head {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .sample-desc {
   margin: 0;
-  font-size: 12px;
-  color: #334155;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body-sm);
+  color: var(--text-secondary);
 }
 
 .readonly-meta-footer {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line, #eaeef2);
-  font-size: 11px;
-  color: var(--muted, #8a96a5);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 .muted-note {
   margin: 0;
-  font-size: 12px;
-  color: var(--muted, #8a96a5);
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 /* 右栏（管理侧）：阈值与开关规则 */
 .grade-list {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .grade-item {
   display: grid;
-  gap: 5px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line, #eaeef2);
-}
-
-.grade-item small {
-  font-size: 12px;
-  color: #475569;
-}
-
-.grade-chip {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 6px;
+  padding: 10px 14px;
+  border: 0;
 }
 
 .grade-item.grade-a {
-  background: #f5fbfa;
-  border-color: #d7eeeb;
-}
-
-.grade-item.grade-a .grade-chip {
-  background: #e8f6f4;
-  color: #0f766e;
+  box-shadow: inset 3px 0 0 var(--success-solid);
 }
 
 .grade-item.grade-b {
-  background: #fffcf3;
-  border-color: #f3e2b8;
-}
-
-.grade-item.grade-b .grade-chip {
-  background: #fff5dd;
-  color: #a86c08;
+  box-shadow: inset 3px 0 0 var(--warning-solid);
 }
 
 .grade-item.grade-c {
-  background: #fef7f7;
-  border-color: #f6cecb;
+  box-shadow: inset 3px 0 0 var(--danger-solid);
 }
 
-.grade-item.grade-c .grade-chip {
-  background: #fdecec;
-  color: #c0362c;
+.grade-tag {
+  justify-self: start;
+  font-weight: var(--fw-semibold);
+}
+
+.grade-text {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body-sm);
+  color: var(--text-primary);
 }
 
 .auto-rules {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line, #eaeef2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sub-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .sub-head h3 {
   margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--heading, #0f172a);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
 }
 
 .sub-head-right {
@@ -2675,20 +2571,12 @@ function formatTimestamp(raw) {
   gap: 6px;
 }
 
-.rule-summary {
-  font-size: 11px;
-  color: #0f766e;
-  background: #e8f6f4;
-  padding: 2px 7px;
-  border-radius: 999px;
-}
-
 .rule-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
 }
 
 .rule-row {
@@ -2696,10 +2584,15 @@ function formatTimestamp(raw) {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 10px;
-  background: #f8fafc;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 8px;
+  min-height: var(--row-h);
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rule-row + .rule-row {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .rule-info {
@@ -2709,99 +2602,71 @@ function formatTimestamp(raw) {
   gap: 2px;
 }
 
-.rule-info strong {
-  font-size: 12px;
-  color: #1e293b;
+.rule-label-text {
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.rule-prefix {
+  margin-right: 6px;
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 .rule-info small {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.4;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
 }
 
 .rule-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex: none;
 }
 
-/* 开关控件 */
-.rule-switch {
-  flex: none;
+.rule-switch-control {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: 1px solid #f3e2b8;
-  border-radius: 999px;
-  background: #fff5dd;
-  color: #a86c08;
-  font-size: 11px;
-  font-weight: 600;
+  gap: 8px;
   cursor: pointer;
 }
 
-.rule-switch.on {
-  border-color: #c5e4e1;
-  background: #e8f6f4;
-  color: #0f766e;
-}
-
-.switch-track {
-  position: relative;
-  width: 28px;
-  height: 16px;
-  border-radius: 999px;
-  background: #d9a441;
-  transition: background-color 0.15s ease;
-}
-
-.rule-switch.on .switch-track {
-  background: #0d9488;
-}
-
-.switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.15s ease;
-}
-
-.rule-switch.on .switch-thumb {
-  transform: translateX(12px);
-}
-
-.switch-label {
+.switch-state {
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+.switch-state.on {
+  color: var(--success-fg);
+  font-weight: var(--fw-medium);
 }
 
 .rule-save-bar {
   display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 10px;
-  background: #f5fbfa;
-  border: 1px solid #c5e4e1;
-  border-radius: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-200);
+  border-radius: var(--radius-lg);
 }
 
 .rule-version-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .version-mini-input {
-  max-width: 84px;
-  min-height: 28px;
-  padding: 3px 8px;
+  max-width: 88px;
+  height: var(--control-h-sm);
+  padding: 0 8px;
 }
 
 .rule-save-actions {
@@ -2817,41 +2682,45 @@ function formatTimestamp(raw) {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .version-item {
-  padding: 10px 12px;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 8px;
-  background: #fafcfd;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: none;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .version-item:hover {
-  border-color: #99d5cf;
-}
-
-.version-item.selected {
-  box-shadow: 0 0 0 2px #0d948826;
+  border-color: var(--border-strong);
 }
 
 .version-item.published {
-  background: #f5fbfa;
-  border-color: #cdebe6;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-200);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
 }
 
 .version-item.reviewing {
-  background: #fffcf3;
-  border-color: #f3e2b8;
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  box-shadow: none;
+}
+
+.version-item.selected:not(.published):not(.reviewing) {
+  border-color: var(--brand-600);
 }
 
 .version-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .version-top-right {
@@ -2862,47 +2731,30 @@ function formatTimestamp(raw) {
 }
 
 .version-label {
-  font-size: 12px;
-  color: var(--heading, #0f172a);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
 }
 
-.version-state {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.version-state.published {
-  background: #e8f6f4;
-  color: #0f766e;
-}
-
-.version-state.archived {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.version-state.reviewing {
-  background: #fff5dd;
-  color: #a86c08;
+.version-item.archived .version-label {
+  color: var(--text-secondary);
+  font-weight: var(--fw-medium);
 }
 
 .version-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 5px;
-  font-size: 11px;
-  color: var(--muted, #8a96a5);
+  gap: var(--space-2);
+  margin-top: 6px;
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
 }
 
 /* 响应式：窄屏自动堆叠 */
 @media (max-width: 1120px) {
   .sop-columns {
-    grid-template-columns: minmax(210px, 240px) minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 252px) minmax(0, 1fr);
   }
 
   .sop-right-col {
@@ -2923,12 +2775,15 @@ function formatTimestamp(raw) {
     grid-template-columns: 1fr;
   }
 
+  .sop-main-card {
+    min-height: 0;
+  }
+
   .sop-right-col {
     grid-column: auto;
     grid-template-columns: 1fr;
   }
 
-  .step-body,
   .step-editor-inline {
     flex-direction: column;
     align-items: stretch;

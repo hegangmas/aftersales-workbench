@@ -22,7 +22,7 @@
         <span v-if="isFullscreen" class="esc-hint">按 ESC 退出全屏</span>
         <button
           type="button"
-          class="fullscreen-btn"
+          class="btn btn--secondary btn--sm fullscreen-btn"
           :class="{ active: isFullscreen }"
           :aria-pressed="isFullscreen"
           @click="toggleFullscreen"
@@ -44,7 +44,7 @@
           <span class="kpi-label">今日工单</span>
           <span class="mock-badge">{{ hasSummaryTotal ? '实时统计' : '模拟' }}</span>
         </div>
-        <div class="kpi-value">{{ todayTotalDisplay }}</div>
+        <div class="kpi-value" :class="{ 'is-zero': todayTotalDisplay === 0 }">{{ todayTotalDisplay }}</div>
         <p class="kpi-sub">
           {{ hasSummaryTotal ? '工作台全量累计工单池' : '未接入实时总量，展示演示基准' }}
         </p>
@@ -62,7 +62,7 @@
             {{ hasUnclaimedSummary ? '待认领池' : '模拟' }}
           </span>
         </div>
-        <div class="kpi-value" :class="{ warn: unclaimedCountDisplay > 0 }">
+        <div class="kpi-value" :class="{ warn: unclaimedCountDisplay > 0, 'is-zero': unclaimedCountDisplay === 0 }">
           {{ unclaimedCountDisplay }}
         </div>
         <p class="kpi-sub kpi-link">点击进入待认领池筛选 <span>→</span></p>
@@ -75,7 +75,7 @@
             {{ hasSlaData ? 'SLA 实时' : '模拟' }}
           </span>
         </div>
-        <div class="kpi-value" :class="{ danger: overdueCountDisplay > 0 }">
+        <div class="kpi-value" :class="{ danger: overdueCountDisplay > 0, 'is-zero': overdueCountDisplay === 0 }">
           {{ overdueCountDisplay }}
         </div>
         <p class="kpi-sub">
@@ -90,7 +90,7 @@
             {{ hasCompromiseData ? '实时统计' : '模拟' }}
           </span>
         </div>
-        <div class="kpi-value">{{ compromiseCountDisplay }}</div>
+        <div class="kpi-value" :class="{ 'is-zero': compromiseCountDisplay === 0 }">{{ compromiseCountDisplay }}</div>
         <p class="kpi-sub">
           {{ hasCompromiseData ? '标记为妥协/特殊处理的工单数' : '暂无妥协标记数据，展示模拟值' }}
         </p>
@@ -531,7 +531,7 @@
             <thead>
               <tr>
                 <th>班次</th>
-                <th v-for="day in weekDays" :key="day">{{ day }}</th>
+                <th v-for="(day, dIdx) in weekDays" :key="day" :class="{ 'is-today': dIdx === todayWeekdayIndex }">{{ day }}</th>
               </tr>
             </thead>
             <tbody>
@@ -540,8 +540,8 @@
                   <strong>{{ shift.name }}</strong>
                   <span>{{ shift.hours }}</span>
                 </th>
-                <td v-for="(member, idx) in shift.members" :key="idx">
-                  <span class="shift-chip" :class="shift.tone">{{ member }}</span>
+                <td v-for="(member, idx) in shift.members" :key="idx" :class="{ 'is-today': idx === todayWeekdayIndex }">
+                  <span class="shift-chip" :class="shift.tone" :title="member">{{ member }}</span>
                 </td>
               </tr>
             </tbody>
@@ -1111,6 +1111,10 @@ const monthOptions = buildMonthOptions()
 const selectedMonth = ref(shanghaiStamp().slice(0, 7))
 
 const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const todayWeekdayIndex = computed(() => {
+  const day = new Date(nowMs.value + 8 * 3600 * 1000).getUTCDay()
+  return day === 0 ? 6 : day - 1
+})
 const shiftRows = computed(() => {
   const names = hasRealAssignees.value && props.assignees.length >= 2
     ? props.assignees.map(a => a.username)
@@ -1164,11 +1168,12 @@ const scheduleSummaryText = computed(() => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 2px 8px #132c4906;
+  min-height: 56px;
+  padding: 10px var(--card-px, 20px);
+  border: 1px solid var(--border-default, #e2e7e7);
+  border-radius: var(--radius-xl, 12px);
+  background: var(--bg-surface, #ffffff);
+  box-shadow: var(--elev-1);
 }
 
 .topbar-left {
@@ -1186,27 +1191,27 @@ const scheduleSummaryText = computed(() => {
 }
 
 .live-indicator {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--pine-bright);
-  box-shadow: 0 0 0 3px var(--pine-soft);
+  background: var(--success-solid, #1f8f5c);
+  box-shadow: 0 0 0 3px rgba(31, 143, 92, 0.18);
   flex: none;
 }
 
 .topbar-title {
   margin: 0;
-  color: var(--heading);
+  color: var(--text-primary, #152020);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .mode-badge {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--pine-soft);
-  color: var(--pine);
-  font-size: 11px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1216,25 +1221,27 @@ const scheduleSummaryText = computed(() => {
   gap: 8px;
   flex-wrap: wrap;
   padding: 4px 10px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-subtle, #f8fafa);
+  border: 0;
   font-size: 12px;
 }
 
 .live-clock {
-  color: var(--heading);
-  font-weight: 600;
+  color: var(--text-primary, #152020);
+  font-family: var(--font-mono, monospace);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .meta-sep {
-  color: var(--muted);
+  color: var(--text-tertiary, #7a8686);
 }
 
 .duty-stat {
-  color: var(--pine);
+  color: var(--brand-700, #0f766e);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .topbar-actions {
@@ -1244,23 +1251,8 @@ const scheduleSummaryText = computed(() => {
 }
 
 .esc-hint {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.fullscreen-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid #cce7e2;
-  border-radius: 8px;
-  background: var(--pine-soft);
-  color: var(--pine);
+  color: var(--text-tertiary, #7a8686);
   font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
 
 .fullscreen-btn svg {
@@ -1268,39 +1260,36 @@ const scheduleSummaryText = computed(() => {
   height: 14px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.fullscreen-btn:hover {
-  border-color: var(--pine-bright);
-  background: #d7eeeb;
-}
-
 .fullscreen-btn.active {
-  border-color: var(--pine);
-  background: var(--pine);
+  border-color: var(--brand-700, #0f766e);
+  background: var(--brand-700, #0f766e);
   color: #fff;
 }
 
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--gutter, 16px);
 }
 
 .kpi-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 2px 8px #132c4906;
+  justify-content: space-between;
+  min-height: 112px;
+  gap: 4px;
+  padding: 16px 20px;
+  border: 1px solid var(--border-default, #e2e7e7);
+  border-radius: var(--radius-xl, 12px);
+  background: var(--bg-surface, #ffffff);
+  box-shadow: var(--elev-1);
   text-align: left;
-  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 
 .kpi-interactive {
@@ -1308,19 +1297,18 @@ const scheduleSummaryText = computed(() => {
 }
 
 .kpi-interactive:hover {
-  border-color: var(--pine-bright);
-  box-shadow: 0 4px 14px #0f766e14;
-  transform: translateY(-1px);
+  border-color: var(--border-strong, #cfd7d7);
+  box-shadow: var(--elev-2);
 }
 
 .kpi-card.warn {
-  border-color: #f3dfb6;
-  background: linear-gradient(180deg, #fffdf7 0%, #fff 100%);
+  border-color: var(--warning-border, #f3d7a6);
+  background: linear-gradient(180deg, #FFFAF1 0%, #FFFFFF 72%);
 }
 
 .kpi-card.danger {
-  border-color: #f3c6c2;
-  background: linear-gradient(180deg, #fff8f7 0%, #fff 100%);
+  border-color: var(--danger-border, #f4c5c0);
+  background: linear-gradient(180deg, #FFF8F7 0%, #FFFFFF 72%);
 }
 
 .kpi-head {
@@ -1331,86 +1319,90 @@ const scheduleSummaryText = computed(() => {
 }
 
 .kpi-label {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--text-secondary, #4a5656);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .kpi-value {
-  color: var(--heading);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.15;
+  color: var(--text-primary, #152020);
+  font-family: var(--font-num, sans-serif);
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.kpi-value.warn { color: var(--warn); }
-.kpi-value.danger { color: var(--danger); }
+.kpi-value.is-zero { color: var(--text-disabled, #a8b2b2); }
+.kpi-value.warn { color: var(--warning-fg, #a15c07); }
+.kpi-value.danger { color: var(--danger-fg, #c0362c); }
 
 .kpi-sub {
   margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .kpi-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--pine);
-  font-weight: 600;
+  color: var(--brand-700, #0f766e);
+  font-weight: 500;
 }
 
 .mock-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #64748b;
-  font-size: 10px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .mock-badge.warn {
-  border-color: #f3e2b8;
-  background: #fff8e8;
-  color: var(--warn);
+  background: var(--warning-bg, #fef5e6);
+  color: var(--warning-fg, #a15c07);
 }
 
 .mock-badge.danger {
-  border-color: #f5c2be;
-  background: #fdecec;
-  color: var(--danger);
+  background: var(--danger-bg, #fdeeec);
+  color: var(--danger-fg, #c0362c);
 }
 
 .duty-ratio-badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
-  border: 1px solid #cce7e2;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--brand-100, #ccede8);
   border-radius: 999px;
-  background: var(--pine-soft);
-  color: var(--pine);
-  font-size: 11px;
-  font-weight: 700;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .mid-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(275px, 0.9fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.75fr) minmax(290px, 0.9fr);
+  gap: var(--gutter, 16px);
   align-items: stretch;
 }
 
 .bottom-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.02fr) minmax(0, 1.24fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
+  gap: var(--gutter, 16px);
   align-items: stretch;
 }
 
@@ -1418,11 +1410,26 @@ const scheduleSummaryText = computed(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 2px 10px #132c4906;
+  padding: 16px 20px;
+  border: 1px solid var(--border-default, #e2e7e7);
+  border-radius: var(--radius-xl, 12px);
+  background: var(--bg-surface, #ffffff);
+  box-shadow: var(--elev-1);
+}
+
+.pool-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.pool-card .pool-header {
+  padding: 16px 20px 12px;
+  margin-bottom: 0;
+}
+
+.pool-card .pool-pagination {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle, #edf0f0);
 }
 
 .card-header {
@@ -1435,15 +1442,15 @@ const scheduleSummaryText = computed(() => {
 
 .card-header h2 {
   margin: 0;
-  color: var(--heading);
+  color: var(--text-primary, #152020);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .card-sub {
   margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
 }
 
 .pool-header {
@@ -1460,58 +1467,60 @@ const scheduleSummaryText = computed(() => {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   max-width: 100%;
 }
 
 .pool-filter-select,
 .pool-filter-input,
 .month-select {
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: #f8fafc;
-  color: var(--ink);
-  font-size: 11px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, #cfd7d7);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #152020);
+  font-size: 13px;
   outline: none;
-  transition: border-color .15s ease, background .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 
 .pool-filter-select:focus,
 .pool-filter-input:focus,
 .month-select:focus {
-  border-color: var(--pine-bright);
-  background: #fff;
+  border-color: var(--brand-600, #0d9488);
+  box-shadow: var(--focus-ring);
 }
 
 .pool-filter-input {
-  width: 150px;
-  min-width: 110px;
+  width: 168px;
+  min-width: 120px;
 }
 
 .link-btn {
   flex: none;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid #d5ebe5;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
   border-radius: 6px;
-  background: var(--pine-soft);
-  color: var(--pine);
-  font-size: 12px;
-  font-weight: 600;
+  background: transparent;
+  color: var(--brand-700, #0f766e);
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .link-btn:hover {
-  border-color: var(--pine-bright);
-  background: #dbf0ec;
+  color: var(--brand-800, #115e59);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle, #edf0f0);
+  border-radius: 0;
 }
 
 .pool-table {
@@ -1522,38 +1531,44 @@ const scheduleSummaryText = computed(() => {
   text-align: left;
 }
 
-.pool-table .col-order { width: 88px; }
-.pool-table .col-channel { width: 82px; }
+.pool-table .col-order { width: 158px; }
+.pool-table .col-channel { width: 88px; }
 .pool-table .col-title { width: auto; }
-.pool-table .col-sla { width: 92px; }
-.pool-table .col-status { width: 86px; }
-.pool-table .col-owner { width: 96px; }
+.pool-table .col-sla { width: 98px; }
+.pool-table .col-status { width: 92px; }
+.pool-table .col-owner { width: 112px; }
 
 .pool-table th {
-  padding: 8px 6px;
-  border-bottom: 1px solid var(--line);
-  background: #f8fafc;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
+  height: 40px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-default, #e2e7e7);
+  background: var(--bg-subtle, #f8fafa);
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .pool-table td {
-  padding: 8px 6px;
-  border-bottom: 1px solid #f1f5f9;
+  height: 48px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle, #edf0f0);
   vertical-align: middle;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .pool-table th:first-child,
 .pool-table td:first-child {
-  padding-left: 10px;
+  padding-left: 20px;
 }
 
 .pool-table th:last-child,
 .pool-table td:last-child {
-  padding-right: 10px;
+  padding-right: 20px;
+}
+
+.pool-table tbody tr:hover td {
+  background: var(--bg-hover, #f4f8f7);
 }
 
 .pool-table tbody tr:last-child td {
@@ -1561,49 +1576,51 @@ const scheduleSummaryText = computed(() => {
 }
 
 .pool-table tr.row-unassigned td {
-  background: #fffbf2;
+  background: #FFFBF2;
 }
 
 .pool-table tr.row-unassigned td:first-child {
-  box-shadow: inset 3px 0 0 #eab65f;
+  box-shadow: inset 3px 0 0 var(--warning-solid, #d97706);
 }
 
 .pool-table tr.row-overdue td {
-  background: #fdf4f3;
+  background: #FEF5F4;
 }
 
 .pool-table tr.row-overdue td:first-child {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger-solid, #c0362c);
 }
 
 .order-btn {
   display: block;
   max-width: 100%;
-  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--pine);
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
+  color: var(--brand-700, #0f766e);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .order-btn:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .channel-pill {
   display: inline-flex;
   align-items: center;
+  height: 20px;
   max-width: 100%;
   overflow: hidden;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--pine-soft);
-  color: var(--pine);
-  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1612,7 +1629,7 @@ const scheduleSummaryText = computed(() => {
 .title-cell {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -1625,8 +1642,8 @@ const scheduleSummaryText = computed(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ink);
-  font-size: 12px;
+  color: var(--text-primary, #152020);
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
   text-overflow: ellipsis;
@@ -1634,78 +1651,84 @@ const scheduleSummaryText = computed(() => {
 }
 
 .title-btn:hover {
-  color: var(--pine);
+  color: var(--brand-700, #0f766e);
 }
 
 .kind-tag,
 .compromise-tag,
 .priority-tag {
   flex: none;
-  padding: 1px 5px;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 4px;
-  font-size: 10px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1;
 }
 
-.kind-tag.fault { background: #fbefed; color: #ba7d73; }
-.kind-tag.consult { background: #edf5fc; color: #6d9ac4; }
-.kind-tag.service { background: #eaf6f1; color: #5a9f8c; }
-.priority-tag.high { background: #fdecec; color: var(--danger); font-weight: 600; }
-.compromise-tag { background: #fdecec; color: var(--danger); font-weight: 600; }
+.kind-tag.fault { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); }
+.kind-tag.consult { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.kind-tag.service { background: var(--brand-50, #e8f6f4); color: var(--brand-700, #0f766e); }
+.priority-tag.high { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); font-weight: 600; }
+.compromise-tag { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); font-weight: 600; }
 
 .sla-text {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   max-width: 100%;
   overflow: hidden;
-  color: #64748b;
+  color: var(--text-secondary, #4a5656);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sla-text i {
   flex: none;
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.sla-text.overdue { color: var(--danger); font-weight: 600; }
-.sla-text.soon { color: var(--warn); font-weight: 600; }
-.sla-text.normal { color: var(--pine); }
+.sla-text.overdue { color: var(--danger-fg, #c0362c); font-weight: 600; }
+.sla-text.soon { color: var(--warning-fg, #a15c07); font-weight: 600; }
+.sla-text.normal { color: var(--brand-700, #0f766e); }
 
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  height: 22px;
   max-width: 100%;
   overflow: hidden;
-  padding: 2px 6px;
-  border-radius: 5px;
-  font-size: 11px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.status-pill i { flex: none; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.status-pill.processing { background: #e6f7f5; color: #0f766e; }
-.status-pill.waiting { background: #fef3c7; color: #b45309; }
-.status-pill.dispatch { background: #eef2ff; color: #4338ca; }
-.status-pill.onsite { background: #e0f2fe; color: #0369a1; }
-.status-pill.verify { background: #f3e8ff; color: #7e22ce; }
-.status-pill.closed { background: #f1f5f9; color: #475569; }
-.status-pill.triage { background: #fce7f3; color: #9d174d; }
-.status-pill.follow { background: #ecfccb; color: #3f6212; }
-.status-pill.answered { background: #f5f5f4; color: #57534e; }
-.status-pill.referred { background: #f4f4f5; color: #3f3f46; }
+.status-pill i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.processing { background: var(--brand-50, #e8f6f4); color: var(--brand-700, #0f766e); }
+.status-pill.waiting { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-pill.dispatch { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-pill.onsite { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-pill.verify { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-pill.closed { background: var(--neutral-bg, #f1f4f4); color: var(--neutral-fg, #4a5656); }
+.status-pill.triage { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); }
+.status-pill.follow { background: var(--success-bg, #eaf6ef); color: var(--success-fg, #18794e); }
+.status-pill.answered { background: var(--neutral-bg, #f1f4f4); color: var(--neutral-fg, #4a5656); }
+.status-pill.referred { background: var(--neutral-bg, #f1f4f4); color: var(--neutral-fg, #4a5656); }
 
 .owner-cell {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -1719,40 +1742,42 @@ const scheduleSummaryText = computed(() => {
   font-weight: 600;
 }
 
-.avatar-dot { width: 20px; height: 20px; font-size: 10px; }
+.avatar-dot { width: 22px; height: 22px; font-size: 12px; }
 .agent-avatar { width: 32px; height: 32px; font-size: 13px; }
 
-.avatar-dot.teal, .agent-avatar.teal { background: #e2f2ef; color: #0f766e; }
-.avatar-dot.blue, .agent-avatar.blue { background: #e9f1fb; color: #4a76a8; }
-.avatar-dot.purple, .agent-avatar.purple { background: #f0ecfa; color: #7e63b0; }
-.avatar-dot.pink, .agent-avatar.pink { background: #f8eaf0; color: #a96787; }
+.avatar-dot.teal, .agent-avatar.teal { background: var(--avatar-1-bg, #e8f6f4); color: var(--avatar-1-fg, #0f766e); }
+.avatar-dot.blue, .agent-avatar.blue { background: var(--avatar-2-bg, #edf1f5); color: var(--avatar-2-fg, #45607a); }
+.avatar-dot.purple, .agent-avatar.purple { background: var(--avatar-3-bg, #f5f1e8); color: var(--avatar-3-fg, #7a5c2e); }
+.avatar-dot.pink, .agent-avatar.pink { background: var(--avatar-4-bg, #eef3ec); color: var(--avatar-4-fg, #4c6b45); }
 
 .owner-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
+  color: var(--text-primary, #152020);
+  font-size: 13px;
   text-overflow: ellipsis;
 }
 
 .unowned-label {
-  color: var(--warn);
+  color: var(--warning-fg, #a15c07);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .claim-mini {
-  padding: 2px 7px;
-  border: 1px solid #a4d2c9;
-  border-radius: 5px;
-  background: #fffefa;
-  color: var(--pine);
-  font-size: 11px;
-  font-weight: 600;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--brand-100, #ccede8);
+  border-radius: 6px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .claim-mini:hover:not(:disabled) {
-  background: var(--pine-soft);
+  background: #DAF0EC;
+  border-color: var(--brand-200, #99dbd2);
 }
 
 .claim-mini:disabled {
@@ -1829,8 +1854,8 @@ const scheduleSummaryText = computed(() => {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
 }
 
 .agent-row {
@@ -1838,10 +1863,15 @@ const scheduleSummaryText = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #fbfcfd;
+  min-height: 56px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, #edf0f0);
+  background: transparent;
+}
+
+.agent-row:last-child {
+  border-bottom: 0;
 }
 
 .agent-main {
@@ -1863,24 +1893,29 @@ const scheduleSummaryText = computed(() => {
 }
 
 .agent-name-line strong {
-  color: var(--heading);
+  color: var(--text-primary, #152020);
   font-size: 13px;
+  font-weight: 600;
 }
 
 .role-tag {
-  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 4px;
-  background: var(--pine-soft);
-  color: var(--pine);
-  font-size: 10px;
-  font-weight: 600;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .agent-duration {
   display: block;
   margin-top: 2px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .presence-pill {
@@ -1888,17 +1923,17 @@ const scheduleSummaryText = computed(() => {
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 4px 10px;
+  height: 26px;
+  padding: 0 10px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform .12s ease, border-color .15s ease, filter .15s ease;
+  transition: border-color .15s ease, background .15s ease;
 }
 
 .presence-pill:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: currentColor;
 }
 
@@ -1915,28 +1950,31 @@ const scheduleSummaryText = computed(() => {
 }
 
 .presence-pill.ready {
-  background: var(--pine-soft);
-  color: var(--pine);
+  background: var(--success-bg, #eaf6ef);
+  border-color: var(--success-border, #bfe3ce);
+  color: var(--success-fg, #18794e);
 }
 
 .presence-pill.break {
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--warning-bg, #fef5e6);
+  border-color: var(--warning-border, #f3d7a6);
+  color: var(--warning-fg, #a15c07);
 }
 
 .presence-pill.away {
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--neutral-bg, #f1f4f4);
+  border-color: var(--neutral-border, #e2e7e7);
+  color: var(--neutral-fg, #4a5656);
 }
 
 .duty-error {
   margin: 8px 0 0;
-  padding: 6px 10px;
-  border: 1px solid #f5c2be;
-  border-radius: 7px;
-  background: #fdecec;
-  color: var(--danger);
-  font-size: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border, #f4c5c0);
+  border-radius: 8px;
+  background: var(--danger-bg, #fdeeec);
+  color: var(--danger-fg, #c0362c);
+  font-size: 12px;
 }
 
 .agent-footer {
@@ -1946,34 +1984,35 @@ const scheduleSummaryText = computed(() => {
 
 .assign-btn {
   width: 100%;
-  min-height: 38px;
-  padding: 8px 12px;
-  border: 1px solid var(--pine);
-  border-radius: 8px;
-  background: var(--pine);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  transition: background .15s ease;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong, #cfd7d7);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #152020);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--elev-1);
+  transition: background .15s ease, border-color .15s ease;
 }
 
 .assign-btn:hover:not(:disabled) {
-  background: var(--pine-bright);
-  border-color: var(--pine-bright);
+  background: var(--bg-subtle, #f8fafa);
+  border-color: var(--border-hover, #b5c0c0);
 }
 
 .assign-btn:disabled {
-  opacity: .6;
+  opacity: .55;
   cursor: not-allowed;
 }
 
 .assign-notice {
   margin: 8px 0 0;
   padding: 8px 10px;
-  border: 1px solid #bce2dc;
+  border: 1px solid var(--brand-100, #ccede8);
   border-radius: 8px;
-  background: var(--pine-soft);
-  color: var(--pine);
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1998,11 +2037,11 @@ const scheduleSummaryText = computed(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 5px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .channel-name {
-  color: var(--ink);
+  color: var(--text-primary, #152020);
   font-weight: 500;
 }
 
@@ -2013,26 +2052,28 @@ const scheduleSummaryText = computed(() => {
 }
 
 .channel-count {
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .channel-pct {
-  color: var(--heading);
-  font-weight: 700;
+  color: var(--text-primary, #152020);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .bar-track {
-  height: 9px;
-  border-radius: 999px;
-  background: var(--canvas);
-  border: 1px solid var(--line);
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-muted, #f1f4f4);
+  border: 0;
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 4px;
   transition: width .25s ease;
 }
 
@@ -2045,25 +2086,26 @@ const scheduleSummaryText = computed(() => {
   display: inline-flex;
   padding: 2px;
   border-radius: 7px;
-  background: #f1f5f9;
+  background: var(--bg-muted, #f1f4f4);
 }
 
 .range-switch button {
-  padding: 3px 8px;
+  height: 24px;
+  padding: 0 10px;
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #64748b;
-  font-size: 11px;
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .range-switch button[aria-pressed="true"] {
-  background: #fff;
-  color: var(--pine);
-  font-weight: 700;
-  box-shadow: 0 1px 3px #0f172a12;
+  background: var(--bg-surface, #ffffff);
+  color: var(--brand-700, #0f766e);
+  font-weight: 600;
+  box-shadow: var(--elev-seg);
 }
 
 .trend-legend {
@@ -2071,8 +2113,8 @@ const scheduleSummaryText = computed(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 6px;
-  font-size: 11px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--text-secondary, #4a5656);
 }
 
 .legend-item {
@@ -2087,8 +2129,8 @@ const scheduleSummaryText = computed(() => {
   border-radius: 50%;
 }
 
-.dot-pine { background: var(--pine); }
-.dot-danger { background: var(--danger); }
+.dot-pine { background: var(--chart-1, #0d9488); }
+.dot-danger { background: var(--chart-2, #c0362c); }
 
 .svg-wrap {
   width: 100%;
@@ -2102,21 +2144,24 @@ const scheduleSummaryText = computed(() => {
 }
 
 .grid-lines line {
-  stroke: var(--line);
+  stroke: var(--chart-grid, #eef1f1);
   stroke-width: 1;
+  stroke-dasharray: 4 4;
 }
 
 .grid-lines text,
 .x-label {
-  fill: #8a96a5;
-  font-size: 10px;
+  fill: var(--chart-axis, #7a8686);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .schedule-wrap {
   overflow-x: auto;
   margin-top: 4px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle, #edf0f0);
+  border-radius: 0;
 }
 
 .schedule-table {
@@ -2127,21 +2172,26 @@ const scheduleSummaryText = computed(() => {
 }
 
 .schedule-table .col-shift {
-  width: 72px;
+  width: 86px;
 }
 
 .schedule-table th,
 .schedule-table td {
-  padding: 6px 2px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 3px;
+  border-bottom: 1px solid var(--border-subtle, #edf0f0);
   font-size: 12px;
 }
 
+.schedule-table th.is-today,
+.schedule-table td.is-today {
+  background: var(--brand-50, #e8f6f4);
+}
+
 .schedule-table thead th {
-  background: #f8fafc;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
+  background: var(--bg-subtle, #f8fafa);
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -2152,50 +2202,51 @@ const scheduleSummaryText = computed(() => {
 
 .schedule-table tbody th.shift-col {
   text-align: left;
-  padding: 6px 4px 6px 6px;
+  padding: 8px 6px 8px 2px;
   white-space: nowrap;
 }
 
 .shift-col strong {
   display: block;
-  color: var(--heading);
-  font-size: 12px;
+  color: var(--text-primary, #152020);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .shift-col span {
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .shift-chip {
   display: inline-block;
   max-width: 100%;
-  overflow: hidden;
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-radius: 4px;
-  font-size: 11px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 1.4;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 .shift-chip.early {
-  background: var(--pine-soft);
-  color: var(--pine);
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-weight: 500;
 }
 
 .shift-chip.late {
-  background: #f1f5f9;
-  color: var(--ink);
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
 }
 
 .schedule-summary {
   margin-top: auto;
   padding-top: 10px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2255,7 +2306,7 @@ const scheduleSummaryText = computed(() => {
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 </style>

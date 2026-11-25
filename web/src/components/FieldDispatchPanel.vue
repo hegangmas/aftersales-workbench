@@ -116,23 +116,23 @@
               </h3>
             </div>
           </div>
-          <span class="lock-badge">🔒 已锁定</span>
+          <span class="badge badge--lock">已锁定</span>
         </header>
 
         <div class="readonly-stack">
           <div v-for="field in readonlyFields" :key="field.key" class="readonly-field">
             <label class="readonly-label" :for="'ro-' + field.key">{{ field.label }}</label>
-            <div class="readonly-box">
+            <div class="readonly-box field-locked">
               <input
                 :id="'ro-' + field.key"
                 class="readonly-input"
+                :class="{ mono: field.key === 'device' || field.key === 'phone' }"
                 type="text"
                 :value="field.value"
                 readonly
                 tabindex="-1"
                 :aria-label="field.label + '（只读）'"
               >
-              <span class="box-lock" aria-hidden="true">🔒</span>
             </div>
           </div>
         </div>
@@ -1019,15 +1019,15 @@ watch(
 .badge-soft {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-size: 11px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .top-subtitle {
   margin: 2px 0 0;
-  color: var(--muted, #8a96a5);
+  color: var(--text-tertiary, #7a8686);
   font-size: 12px;
 }
 
@@ -1039,8 +1039,8 @@ watch(
   list-style: none;
   margin: 0;
   padding: 8px 14px;
-  background: #f8fafc;
-  border: 1px solid var(--line, #eaeef2);
+  background: var(--bg-subtle, #f8fafa);
+  border: 0;
   border-radius: 10px;
 }
 
@@ -1048,61 +1048,64 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
-  color: var(--muted, #8a96a5);
+  font-size: 13px;
+  color: var(--text-tertiary, #7a8686);
 }
 
 .step-num {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
-  background: #e2e8f0;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
+  background: var(--bg-surface, #fff);
+  border: 1.5px solid var(--border-strong, #cfd7d7);
+  color: var(--text-tertiary, #7a8686);
+  font-family: var(--font-num, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .step-item.done .step-num {
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  border: 1px solid var(--pine-bright, #0d9488);
+  background: var(--brand-700, #0f766e);
+  color: #fff;
+  border-color: var(--brand-700, #0f766e);
 }
 
 .step-item.active .step-num {
-  background: var(--pine, #0f766e);
-  color: #fff;
-  box-shadow: 0 0 0 3px #0d948824;
+  background: var(--bg-surface, #fff);
+  border: 2px solid var(--brand-700, #0f766e);
+  color: var(--brand-700, #0f766e);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.14);
 }
 
 .step-item.done .step-text,
 .step-item.active .step-text {
-  color: var(--heading, #0f172a);
+  color: var(--text-primary, #152020);
   font-weight: 600;
 }
 
 .step-arrow {
   margin-left: 2px;
-  color: #cbd5e1;
+  color: var(--text-disabled, #a8b2b2);
 }
 
 /* 三栏主区域 */
 .dispatch-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(260px, 0.95fr) minmax(320px, 1.15fr);
-  gap: 14px;
+  gap: var(--gutter, 16px);
   align-items: stretch;
 }
 
 .card-col,
 .card-bottom {
   min-width: 0;
-  padding: 18px;
-  background: #fff;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 12px;
-  box-shadow: 0 4px 14px #132c4908;
+  padding: 18px 20px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-default, #e2e7e7);
+  border-radius: var(--radius-xl, 12px);
+  box-shadow: var(--elev-1);
 }
 
 .col-head {
@@ -1112,22 +1115,22 @@ watch(
   gap: 10px;
   padding-bottom: 12px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--line, #eaeef2);
+  border-bottom: 1px solid var(--border-subtle, #edf0f0);
 }
 
 .col-kicker {
   display: block;
-  color: var(--pine, #0f766e);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .col-head h3 {
   margin: 2px 0 0;
-  color: var(--heading, #0f172a);
+  color: var(--text-primary, #152020);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .title-inline {
@@ -1194,17 +1197,18 @@ watch(
 }
 
 .order-label {
-  color: var(--pine, #0f766e);
-  font-size: 11px;
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .order-code {
-  color: var(--pine-ink, #102c2b);
+  color: var(--text-primary, #152020);
+  font-family: var(--font-mono, monospace);
   font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 /* 状态胶囊 */
@@ -1212,10 +1216,11 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 9px;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -1226,14 +1231,14 @@ watch(
   background: currentColor;
 }
 
-.status-pill.processing { background: #e6f7f5; color: #0f766e; }
-.status-pill.waiting { background: #fef3c7; color: #b45309; }
-.status-pill.dispatch { background: #e8f6f4; color: #0f766e; }
-.status-pill.onsite { background: #e0f2fe; color: #0369a1; }
-.status-pill.verify { background: #f3e8ff; color: #7e22ce; }
-.status-pill.closed { background: #f1f5f9; color: #475569; }
-.status-pill.triage { background: #fce7f3; color: #9d174d; }
-.status-pill.follow { background: #ecfccb; color: #3f6212; }
+.status-pill.processing { background: var(--brand-50, #e8f6f4); color: var(--brand-700, #0f766e); }
+.status-pill.waiting { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-pill.dispatch { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-pill.onsite { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-pill.verify { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-pill.closed { background: var(--neutral-bg, #f1f4f4); color: var(--neutral-fg, #4a5656); }
+.status-pill.triage { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); }
+.status-pill.follow { background: var(--success-bg, #eaf6ef); color: var(--success-fg, #18794e); }
 
 .info-list {
   display: grid;
@@ -1279,24 +1284,24 @@ watch(
   align-items: center;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-size: 11px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .remark-box {
-  padding: 12px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid var(--line, #eaeef2);
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-subtle, #f8fafa);
+  border: 0;
 }
 
 .remark-head {
@@ -1305,31 +1310,31 @@ watch(
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-  color: var(--muted, #8a96a5);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .remark-text {
   margin: 0;
-  color: var(--ink, #334155);
-  font-size: 12px;
+  color: var(--text-secondary, #4a5656);
+  font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
 .mini-chip {
-  padding: 2px 7px;
+  padding: 1px 7px;
   border-radius: 4px;
-  background: #eef2f6;
-  color: #475569;
-  font-size: 11px;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
   font-weight: 500;
 }
 
 .mini-chip.pine {
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
 }
 
 /* 中栏：自动带入（只读） */
@@ -1337,12 +1342,12 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .readonly-stack {
@@ -1408,8 +1413,8 @@ watch(
 
 /* 右栏：需补填字段（单列纵向） */
 .required-hint {
-  font-size: 11px;
-  color: var(--muted, #8a96a5);
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
   white-space: nowrap;
 }
 
@@ -1512,15 +1517,15 @@ watch(
 }
 
 .upload-count {
-  font-size: 11px;
-  color: var(--muted, #8a96a5);
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
   font-variant-numeric: tabular-nums;
 }
 
 .upload-hint {
   margin: 0;
-  font-size: 11px;
-  color: var(--muted, #8a96a5);
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
 }
 
 .sr-only {
@@ -1594,11 +1599,11 @@ watch(
 }
 
 .file-tag {
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 4px;
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-size: 10px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1617,16 +1622,16 @@ watch(
 }
 
 .file-name {
-  font-size: 11px;
-  color: var(--heading, #0f172a);
+  font-size: 12px;
+  color: var(--text-primary, #152020);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .file-meta {
-  color: var(--muted, #8a96a5);
-  font-size: 10px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
 }
 
 .file-slot-btn {
@@ -1635,11 +1640,11 @@ watch(
   justify-content: center;
   min-height: 60px;
   padding: 8px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border-strong, #cfd7d7);
   border-radius: 8px;
-  background: #f8fafc;
-  color: var(--pine, #0f766e);
-  font-size: 11px;
+  background: var(--bg-subtle, #f8fafa);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   text-align: center;
@@ -1774,11 +1779,11 @@ watch(
 }
 
 .state-chip {
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  background: var(--pine-soft, #e8f6f4);
-  color: var(--pine, #0f766e);
-  font-size: 11px;
+  background: var(--brand-50, #e8f6f4);
+  color: var(--brand-700, #0f766e);
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1840,10 +1845,12 @@ watch(
   height: 24px;
   flex: none;
   border-radius: 999px;
-  background: #e2e8f0;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
+  background: var(--bg-surface, #fff);
+  border: 1.5px solid var(--border-strong, #cfd7d7);
+  color: var(--text-tertiary, #7a8686);
+  font-family: var(--font-num, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .track-node.done .node-dot {
@@ -1882,8 +1889,8 @@ watch(
 
 .node-time {
   display: block;
-  color: var(--muted, #8a96a5);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1921,8 +1928,8 @@ watch(
 }
 
 .muted-note {
-  color: var(--muted, #8a96a5);
-  font-size: 11px;
+  color: var(--text-tertiary, #7a8686);
+  font-size: 12px;
 }
 
 .sim-btn-row {
@@ -1974,8 +1981,8 @@ watch(
 }
 
 .sim-field span {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--text-secondary, #4a5656);
   font-weight: 600;
 }
 

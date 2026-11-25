@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div class="segments" role="toolbar" aria-label="状态筛选">
         <button v-for="id in buckets" :key="id || 'all'" type="button" class="segment" :aria-pressed="filters.bucket === id" @click="chooseBucket(id)">
-          {{ labels[id] }} <span>{{ count(id) }}</span>
+          {{ labels[id] }} <span class="count" :class="{ 'is-zero': count(id) === 0 }">{{ count(id) }}</span>
         </button>
       </div>
       <form class="filters" @submit.prevent="emitFilters(filters.bucket)">
@@ -35,18 +35,25 @@
             <option v-for="item in assignees" :key="item.username" :value="item.username">{{ item.username }}</option>
           </select>
         </label>
-        <button class="icon-button" type="button" aria-label="重置筛选" @click="reset">
+        <button class="icon-button" type="button" aria-label="重置筛选" title="重置筛选" @click="reset">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2 9M3 4v6h6" /></svg>
         </button>
       </form>
     </div>
     <p v-if="narrowed" class="filter-note">当前筛选 {{ total }} 条。上方摘要和分段计数仍是全部问题单。</p>
-    <p v-if="!items.length" class="empty-row">没有符合条件的问题单</p>
+    <div v-if="!items.length" class="empty-state">
+      <svg class="empty-state__icon" viewBox="0 0 48 48" aria-hidden="true">
+        <rect x="8" y="10" width="32" height="28" rx="4" />
+        <path d="M16 20h16M16 26h10M16 32h12" />
+      </svg>
+      <p class="empty-state__title">没有符合条件的问题单</p>
+      <p class="empty-state__desc">尝试调整状态筛选、清空搜索词，或前往「设备」页查桩新建工单</p>
+    </div>
     <div v-else class="table-scroll">
-      <table class="tickets">
+      <table class="tickets table--2line">
         <caption class="visually-hidden">问题单总表</caption>
         <colgroup>
-          <col style="width:8%"><col style="width:26%"><col style="width:14%"><col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:8%">
+          <col style="width:168px"><col style="width:27%"><col style="width:13%"><col style="width:11%"><col style="width:10%"><col style="width:13%"><col style="width:9%"><col style="width:8%">
         </colgroup>
         <thead>
           <tr>
@@ -54,19 +61,19 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id" :class="{ pool: unowned(item) && item.state !== 'resolved' }">
-            <td><button type="button" class="order-link" @click="$emit('open', item.id)">{{ number(item) }}</button></td>
+          <tr v-for="item in items" :key="item.id" :class="{ pool: unowned(item) && item.state !== 'resolved', 'is-urgent': unowned(item) && item.state !== 'resolved' }">
+            <td class="col-id"><button type="button" class="order-link mono" @click="$emit('open', item.id)">{{ number(item) }}</button></td>
             <td>
-              <div class="title-line">
-                <span v-if="kindLabel(item.kind)" class="type-tag" :class="item.kind">{{ kindLabel(item.kind) }}</span>
+              <div class="title-line cell-main">
                 <button type="button" class="title-button clip" @click="$emit('open', item.id)">{{ item.title }}</button>
               </div>
-              <div v-if="item.category" class="sub clip">{{ item.category }}<span v-if="item.channel"> · {{ channel(item.channel) }}</span></div>
-              <div v-if="badges(item).length" class="meta-tags">
+              <div class="cell-sub">
+                <span v-if="kindLabel(item.kind)" class="type-tag" :class="item.kind">{{ kindLabel(item.kind) }}</span>
+                <span v-if="item.category" class="clip">{{ item.category }}<template v-if="item.channel"> · {{ channel(item.channel) }}</template></span>
                 <span v-for="tag in badges(item)" :key="tag.text" class="mini-tag" :class="tag.tone">{{ tag.text }}</span>
               </div>
             </td>
-            <td><div class="device-code">{{ item.device || '无' }}</div></td>
+            <td><div class="device-code mono">{{ item.device || '无' }}</div></td>
             <td><span class="status" :class="status(item).tone"><i></i>{{ status(item).label }}</span></td>
             <td>
               <div class="owner" :class="{ unowned: unowned(item) }">
@@ -75,10 +82,10 @@
               </div>
             </td>
             <td>
-              <div class="callback" :class="due(item).tone"><i v-if="due(item).tone === 'overdue' || due(item).tone === 'today'"></i>{{ due(item).text }}</div>
+              <div class="callback col-time" :class="due(item).tone"><i v-if="due(item).tone === 'overdue' || due(item).tone === 'today'"></i>{{ due(item).text }}</div>
               <div v-if="hint(item)" class="sub clip">{{ hint(item) }}</div>
             </td>
-            <td>
+            <td class="col-time">
               <div class="updated">{{ updated(item.updatedAt).text }}</div>
               <div class="sub">{{ updated(item.updatedAt).year }}</div>
             </td>

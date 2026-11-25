@@ -38,7 +38,7 @@
 
         <button
           type="submit"
-          class="btn primary search-submit"
+          class="btn btn--primary search-submit"
           :disabled="isBusy || !query.trim()"
         >
           {{ searching ? '检索中…' : '查询设备' }}
@@ -50,7 +50,7 @@
         <span class="exception-hint">未带桩号或客户现场无法读取铭牌时，可先走待补例外队列：</span>
         <button
           type="button"
-          class="btn secondary exception-trigger"
+          class="btn btn--ghost exception-trigger"
           :aria-expanded="pendingOpen"
           :disabled="isBusy"
           @click="togglePendingForm"
@@ -128,8 +128,8 @@
           <p v-if="pendingError" class="form-error" role="alert">{{ pendingError }}</p>
 
           <div class="form-actions">
-            <button type="button" class="btn secondary" :disabled="isBusy" @click="pendingOpen = false">取消</button>
-            <button type="submit" class="btn primary" :disabled="isBusy || !canSubmitPending">
+            <button type="button" class="btn btn--secondary" :disabled="isBusy" @click="pendingOpen = false">取消</button>
+            <button type="submit" class="btn btn--primary" :disabled="isBusy || !canSubmitPending">
               {{ submitting ? '提交中…' : '提交「设备信息待补」工单' }}
             </button>
           </div>
@@ -155,7 +155,7 @@
       <section v-if="device" class="sources-strip" aria-label="4 源并行同步状态">
         <div class="sources-head">
           <span class="sources-title">4 源并行聚合状态</span>
-          <span class="sources-meta">
+          <span class="sources-meta tabular">
             {{ device.source || '4源并行聚合' }} · 观测时间 {{ dateLabel(device.observedAt) }}
             <template v-if="Number(device.matchCount || 0) > 1">
               · 共匹配 {{ device.matchCount }} 台，当前展示首条
@@ -175,7 +175,7 @@
               <span class="source-badge">{{ src.ok ? '正常' : '降级缺口' }}</span>
             </div>
             <div class="source-note">{{ src.note || (src.ok ? '已同步' : '接口不可用') }}</div>
-            <div v-if="src.queriedAt" class="source-time">{{ dateLabel(src.queriedAt) }}</div>
+            <div v-if="src.queriedAt" class="source-time mono">{{ dateLabel(src.queriedAt) }}</div>
           </div>
         </div>
       </section>
@@ -188,7 +188,7 @@
         <code class="deep-link-code">{{ deepLinkNotice.url }}</code>
         <span class="deep-link-sub">（模拟内部系统深链地址，可在生产环境单点直达对应单据）</span>
       </div>
-      <button type="button" class="btn-link-teal" @click="deepLinkNotice = null">关闭</button>
+      <button type="button" class="btn btn--link" @click="deepLinkNotice = null">关闭</button>
     </div>
 
     <!-- 成功建单反馈 -->
@@ -196,12 +196,12 @@
       <div>
         <strong>建单成功：</strong>{{ createdNotice }}
       </div>
-      <button type="button" class="btn-link-teal" @click="createdNotice = ''">知道了</button>
+      <button type="button" class="btn btn--link" @click="createdNotice = ''">知道了</button>
     </div>
 
     <!-- 空状态引导 -->
     <section v-if="!device && !searching" class="panel empty-guide">
-      <div class="empty-guide-badge">设备档案</div>
+      <div class="badge badge--brand empty-guide-badge">设备档案</div>
       <h2>输入桩 SN、手机号或项目编号开始查桩</h2>
       <p>支持按 4 源并行聚合查询基本信息、生产与安装、历史报修、历史维修、质保结算及关联工单，并一键带入设备档案建单。</p>
     </section>
@@ -212,7 +212,7 @@
       <section class="panel section-block" aria-label="基本信息">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">①</span>
+            <span class="section-index">1</span>
             <div>
               <h2>基本信息</h2>
               <p class="section-sub">设备身份、客户联系信息与实时在线报文</p>
@@ -220,7 +220,7 @@
           </div>
           <button
             type="button"
-            class="btn primary create-main-btn"
+            class="btn btn--primary create-main-btn"
             :disabled="isBusy"
             @click="openCreateModal"
           >
@@ -228,43 +228,48 @@
           </button>
         </header>
 
-        <dl class="kv-grid">
+        <dl class="desc-grid">
           <div class="kv-item">
-            <dt>客户</dt>
-            <dd>{{ textOrDash(device.customerName) }}</dd>
+            <dt class="desc-grid__label">客户</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.customerName) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>联系人</dt>
-            <dd>{{ textOrDash(device.contactName) }}</dd>
+            <dt class="desc-grid__label">联系人</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.contactName) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>联系电话</dt>
-            <dd>{{ textOrDash(device.customerPhone) }}</dd>
+            <dt class="desc-grid__label">联系电话</dt>
+            <dd class="desc-grid__value mono">{{ textOrDash(device.customerPhone) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>桩 SN</dt>
-            <dd class="mono strong-val">{{ textOrDash(deviceSn) }}</dd>
+            <dt class="desc-grid__label">桩 SN</dt>
+            <dd class="desc-grid__value mono strong-val">{{ textOrDash(deviceSn) }}</dd>
           </div>
           <div class="kv-item kv-span-2">
-            <dt>安装地址</dt>
-            <dd>{{ textOrDash(device.siteAddress) }}</dd>
+            <dt class="desc-grid__label">安装地址</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.siteAddress) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>型号</dt>
-            <dd>{{ textOrDash(device.model) }}<span v-if="device.productType" class="sub-tag">{{ device.productType }}</span></dd>
+            <dt class="desc-grid__label">型号</dt>
+            <dd class="desc-grid__value">
+              <span>{{ textOrDash(device.model) }}</span>
+              <span v-if="device.productType" class="tag sub-tag">{{ device.productType }}</span>
+            </dd>
           </div>
           <div class="kv-item">
-            <dt>在线状态</dt>
-            <dd>
-              <span class="inline-pill" :class="onlineTone(device.onlineStatus)">
-                <i></i>{{ textOrDash(device.onlineStatus) }}
+            <dt class="desc-grid__label">在线状态</dt>
+            <dd class="desc-grid__value status-badges">
+              <span class="badge badge--dot" :class="onlineTone(device.onlineStatus)">
+                {{ textOrDash(device.onlineStatus) }}
               </span>
-              <span v-if="device.currentStatus" class="sub-muted">· {{ device.currentStatus }}</span>
+              <span v-if="device.currentStatus" class="badge badge--dot" :class="currentStatusTone(device.currentStatus)">
+                {{ device.currentStatus }}
+              </span>
             </dd>
           </div>
           <div class="kv-item kv-span-full">
-            <dt>实时报文</dt>
-            <dd class="telemetry-box">{{ textOrDash(device.realtimeTelemetry) }}</dd>
+            <dt class="desc-grid__label">实时报文</dt>
+            <dd class="desc-grid__value telemetry-box">{{ textOrDash(device.realtimeTelemetry) }}</dd>
           </div>
         </dl>
       </section>
@@ -273,7 +278,7 @@
       <section class="panel section-block" aria-label="生产与安装">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">②</span>
+            <span class="section-index">2</span>
             <div>
               <h2>生产与安装</h2>
               <p class="section-sub">MES 生产追溯与售后安装验收档案</p>
@@ -282,45 +287,55 @@
           <div class="section-actions">
             <button
               type="button"
-              class="btn secondary btn-sm"
+              class="btn btn--secondary btn--sm"
               @click="showDeepLink('MES 原始批次深链', deepLinks.mesBatch || ('https://mes.internal/trace/' + deviceSn))"
             >
-              查看 MES 原始批次 ↗
+              <span>查看 MES 原始批次</span>
+              <svg class="ext-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 3h7v7" />
+                <path d="M13 3L6 10" />
+                <path d="M11 9v4H3V5h4" />
+              </svg>
             </button>
             <button
               type="button"
-              class="btn secondary btn-sm"
+              class="btn btn--secondary btn--sm"
               @click="showDeepLink('安装验收单深链', deepLinks.installOrder || ('https://lezhuang.internal/install/' + (device.projectCode || deviceSn)))"
             >
-              查看安装验收单 ↗
+              <span>查看安装验收单</span>
+              <svg class="ext-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 3h7v7" />
+                <path d="M13 3L6 10" />
+                <path d="M11 9v4H3V5h4" />
+              </svg>
             </button>
           </div>
         </header>
 
-        <dl class="kv-grid">
+        <dl class="desc-grid">
           <div class="kv-item" :class="{ 'kv-degraded': isSourceDegraded('MES') && !device.manufacturedAt }">
-            <dt>出厂日期</dt>
-            <dd>{{ device.manufacturedAt || (isSourceDegraded('MES') ? '暂缺（MES 降级）' : '—') }}</dd>
+            <dt class="desc-grid__label">出厂日期</dt>
+            <dd class="desc-grid__value mono">{{ device.manufacturedAt || (isSourceDegraded('MES') ? '暂缺（MES 降级）' : '—') }}</dd>
           </div>
           <div class="kv-item" :class="{ 'kv-degraded': isSourceDegraded('MES') && !device.mesBatch }">
-            <dt>MES 批次</dt>
-            <dd class="mono">{{ device.mesBatch || (isSourceDegraded('MES') ? '暂缺（MES 降级）' : '—') }}</dd>
+            <dt class="desc-grid__label">MES 批次</dt>
+            <dd class="desc-grid__value mono">{{ device.mesBatch || (isSourceDegraded('MES') ? '暂缺（MES 降级）' : '—') }}</dd>
           </div>
           <div class="kv-item" :class="{ 'kv-degraded': isSourceDegraded('MES') }">
-            <dt>出厂检验结果</dt>
-            <dd>{{ textOrDash(device.mesTestResult) }}</dd>
+            <dt class="desc-grid__label">出厂检验结果</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.mesTestResult) }}</dd>
           </div>
           <div class="kv-item" :class="{ 'kv-degraded': isSourceDegraded('安装') && !device.installedAt }">
-            <dt>安装日期</dt>
-            <dd>{{ device.installedAt || (isSourceDegraded('安装') ? '暂缺（安装系统降级）' : '—') }}</dd>
+            <dt class="desc-grid__label">安装日期</dt>
+            <dd class="desc-grid__value mono">{{ device.installedAt || (isSourceDegraded('安装') ? '暂缺（安装系统降级）' : '—') }}</dd>
           </div>
           <div class="kv-item">
-            <dt>程序版本</dt>
-            <dd class="mono">{{ textOrDash(device.firmwareVersion) }}</dd>
+            <dt class="desc-grid__label">程序版本</dt>
+            <dd class="desc-grid__value mono">{{ textOrDash(device.firmwareVersion) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>SIM 到期时间</dt>
-            <dd>{{ textOrDash(device.simExpiresAt) }}</dd>
+            <dt class="desc-grid__label">SIM 到期时间</dt>
+            <dd class="desc-grid__value mono">{{ textOrDash(device.simExpiresAt) }}</dd>
           </div>
         </dl>
       </section>
@@ -329,30 +344,35 @@
       <section class="panel section-block" aria-label="历史报修">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">③</span>
+            <span class="section-index">3</span>
             <div>
               <h2>历史报修</h2>
               <p class="section-sub">同桩历次报修工单与未闭环防重核查（点击工单号可直达详情）</p>
             </div>
           </div>
-          <span class="count-chip">共 {{ relatedProblems.length }} 条</span>
+          <span class="tag tabular count-chip">共 {{ relatedProblems.length }} 条</span>
         </header>
 
         <div v-if="openProblems.length" class="dup-banner" role="status">
           <div class="dup-banner-title">
-            同桩未闭环防重提示：当前有 {{ openProblems.length }} 条未闭环工单，请优先点击原工单号跟进，避免重复建单
+            <svg class="dup-warn-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 2.2 14.2 13H1.8L8 2.2Z" />
+              <path d="M8 6.4v3.2" />
+              <circle cx="8" cy="11.4" r="0.5" fill="currentColor" stroke="none" />
+            </svg>
+            <span>同桩未闭环防重提示：当前有 {{ openProblems.length }} 条未闭环工单，请优先点击原工单号跟进，避免重复建单</span>
           </div>
           <div class="dup-links">
             <button
               v-for="item in openProblems"
               :key="item.id"
               type="button"
-              class="dup-order-chip"
+              class="tag dup-order-chip"
               @click="$emit('open', item.id)"
             >
-              <span class="mono">{{ orderNumber(item) }}</span>
-              <span>{{ item.title }}</span>
-              <span class="status-tag" :class="displayStatus(item).tone">{{ displayStatus(item).label }}</span>
+              <span class="mono dup-order-no">{{ orderNumber(item) }}</span>
+              <span class="dup-order-title">{{ item.title }}</span>
+              <span class="badge badge--dot" :class="statusBadgeClass(displayStatus(item).tone)">{{ displayStatus(item).label }}</span>
             </button>
           </div>
         </div>
@@ -370,8 +390,8 @@
               <span class="row-title">{{ item.title }}</span>
             </div>
             <div class="list-row-meta">
-              <span class="status-tag" :class="displayStatus(item).tone">
-                <i></i>{{ displayStatus(item).label }}
+              <span class="badge badge--dot" :class="statusBadgeClass(displayStatus(item).tone)">
+                {{ displayStatus(item).label }}
               </span>
               <span class="meta-owner">
                 负责人：{{ item.owner && item.owner !== 'early' ? item.owner : '待分配' }}
@@ -386,13 +406,16 @@
       <section class="panel section-block" aria-label="历史维修">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">④</span>
+            <span class="section-index">4</span>
             <div>
               <h2>历史维修</h2>
               <p class="section-sub">智享乐装现场维修与远程运维记录</p>
             </div>
           </div>
-          <span class="count-chip" :class="{ degraded: isSourceDegraded('乐装') }">
+          <span
+            class="tabular"
+            :class="isSourceDegraded('乐装') ? 'badge badge--danger' : 'tag count-chip'"
+          >
             {{ isSourceDegraded('乐装') ? '乐装降级' : '共 ' + repairHistory.length + ' 条' }}
           </span>
         </header>
@@ -405,18 +428,23 @@
           <div v-for="(item, idx) in repairHistory" :key="item.orderNo || idx" class="list-row">
             <div class="list-row-main">
               <span class="mono repair-no">{{ textOrDash(item.orderNo) }}</span>
-              <span class="row-date">{{ textOrDash(item.date) }}</span>
+              <span class="row-date tabular">{{ textOrDash(item.date) }}</span>
               <span class="row-title">{{ textOrDash(item.summary) }}</span>
             </div>
             <div class="list-row-meta">
-              <span v-if="item.source" class="sub-tag">{{ item.source }}</span>
+              <span v-if="item.source" class="tag">{{ item.source }}</span>
               <button
                 v-if="item.deepLink"
                 type="button"
-                class="btn-link-teal"
+                class="btn btn--link repair-link-btn"
                 @click="showDeepLink('维修单深链（' + (item.orderNo || '乐装') + '）', item.deepLink)"
               >
-                查看维修单 ↗
+                <span>查看维修单</span>
+                <svg class="ext-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M6 3h7v7" />
+                  <path d="M13 3L6 10" />
+                  <path d="M11 9v4H3V5h4" />
+                </svg>
               </button>
             </div>
           </div>
@@ -428,41 +456,41 @@
       <section class="panel section-block" aria-label="质保结算">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">⑤</span>
+            <span class="section-index">5</span>
             <div>
               <h2>质保结算</h2>
               <p class="section-sub">质保期、延保政策、所属项目与客户 SLA 时效</p>
             </div>
           </div>
-          <span class="inline-pill" :class="warrantyTone(device.warrantyStatus)">
-            <i></i>{{ textOrDash(device.warrantyStatus) }}
+          <span class="badge badge--dot" :class="warrantyTone(device.warrantyStatus)">
+            {{ textOrDash(device.warrantyStatus) }}
           </span>
         </header>
 
-        <dl class="kv-grid">
+        <dl class="desc-grid">
           <div class="kv-item">
-            <dt>质保状态</dt>
-            <dd>{{ textOrDash(device.warrantyStatus) }}</dd>
+            <dt class="desc-grid__label">质保状态</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.warrantyStatus) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>质保至</dt>
-            <dd>{{ textOrDash(device.warrantyUntil) }}</dd>
+            <dt class="desc-grid__label">质保至</dt>
+            <dd class="desc-grid__value mono">{{ textOrDash(device.warrantyUntil) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>延保</dt>
-            <dd>{{ textOrDash(device.extendedWarranty) }}</dd>
+            <dt class="desc-grid__label">延保</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.extendedWarranty) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>所属项目编号</dt>
-            <dd class="mono">{{ textOrDash(device.projectCode) }}</dd>
+            <dt class="desc-grid__label">所属项目编号</dt>
+            <dd class="desc-grid__value mono">{{ textOrDash(device.projectCode) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>项目名称</dt>
-            <dd>{{ textOrDash(device.projectName) }}</dd>
+            <dt class="desc-grid__label">项目名称</dt>
+            <dd class="desc-grid__value">{{ textOrDash(device.projectName) }}</dd>
           </div>
           <div class="kv-item">
-            <dt>客户类型与 SLA 时效</dt>
-            <dd>{{ customerTypeLabel(device.customerType) }} · {{ slaLabel(device.slaMinutes) }}</dd>
+            <dt class="desc-grid__label">客户类型与 SLA 时效</dt>
+            <dd class="desc-grid__value tabular">{{ customerTypeLabel(device.customerType) }} · {{ slaLabel(device.slaMinutes) }}</dd>
           </div>
         </dl>
       </section>
@@ -471,7 +499,7 @@
       <section class="panel section-block" aria-label="关联工单与充电告警摘要">
         <header class="section-header">
           <div class="section-title-group">
-            <span class="section-index">⑥</span>
+            <span class="section-index">6</span>
             <div>
               <h2>关联工单</h2>
               <p class="section-sub">在途/已闭环工单汇总及最近充电与告警摘要</p>
@@ -479,34 +507,39 @@
           </div>
           <button
             type="button"
-            class="btn secondary btn-sm"
+            class="btn btn--secondary btn--sm"
             @click="showDeepLink('充电桩管理平台深链', deepLinks.devicePlatform || ('https://charger-platform.internal/devices/' + deviceSn))"
           >
-            桩平台设备详情 ↗
+            <span>桩平台设备详情</span>
+            <svg class="ext-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 3h7v7" />
+              <path d="M13 3L6 10" />
+              <path d="M11 9v4H3V5h4" />
+            </svg>
           </button>
         </header>
 
         <div class="summary-kpis">
-          <div class="kpi-tile">
+          <div class="inset kpi-tile">
             <span class="kpi-label">在途工单</span>
-            <strong class="kpi-num accent">{{ openProblems.length }}</strong>
+            <strong class="kpi-num" :class="openProblems.length ? 'accent' : 'is-zero'">{{ openProblems.length }}</strong>
           </div>
-          <div class="kpi-tile">
+          <div class="inset kpi-tile">
             <span class="kpi-label">已闭环 / 已取消</span>
-            <strong class="kpi-num">{{ closedProblems.length }}</strong>
+            <strong class="kpi-num" :class="{ 'is-zero': !closedProblems.length }">{{ closedProblems.length }}</strong>
           </div>
-          <div class="kpi-tile">
+          <div class="inset kpi-tile">
             <span class="kpi-label">最近充电记录</span>
-            <strong class="kpi-num">{{ chargingRecords.length }}</strong>
+            <strong class="kpi-num" :class="{ 'is-zero': !chargingRecords.length }">{{ chargingRecords.length }}</strong>
           </div>
-          <div class="kpi-tile">
+          <div class="inset kpi-tile">
             <span class="kpi-label">最近告警</span>
-            <strong class="kpi-num" :class="{ danger: recentAlerts.length > 0 }">{{ recentAlerts.length }}</strong>
+            <strong class="kpi-num" :class="recentAlerts.length ? 'danger' : 'is-zero'">{{ recentAlerts.length }}</strong>
           </div>
         </div>
 
         <div class="sub-columns">
-          <div class="sub-card">
+          <div class="inset sub-card">
             <h3>工单快速跳转</h3>
             <div v-if="relatedProblems.length" class="quick-ticket-list">
               <button
@@ -518,35 +551,35 @@
               >
                 <span class="mono order-link-text">{{ orderNumber(item) }}</span>
                 <span class="clip-text">{{ item.title }}</span>
-                <span class="status-tag" :class="displayStatus(item).tone">{{ displayStatus(item).label }}</span>
+                <span class="badge badge--dot" :class="statusBadgeClass(displayStatus(item).tone)">{{ displayStatus(item).label }}</span>
               </button>
             </div>
             <p v-else class="empty-inline">暂无关联工单</p>
           </div>
 
-          <div class="sub-card">
+          <div class="inset sub-card">
             <h3>最近充电记录</h3>
             <ul v-if="chargingRecords.length" class="compact-list">
               <li v-for="(rec, idx) in chargingRecords" :key="rec.orderNo || idx">
                 <div class="compact-top">
                   <span class="mono">{{ rec.orderNo }}</span>
-                  <span class="sub-tag" :class="{ warn: rec.status && rec.status.includes('中断') }">{{ rec.status }}</span>
+                  <span class="tag" :class="{ 'tag--warning': rec.status && rec.status.includes('中断') }">{{ rec.status }}</span>
                 </div>
-                <div class="compact-sub">{{ rec.startedAt }} · {{ rec.energy }} · {{ rec.stopReason }}</div>
+                <div class="compact-sub tabular">{{ rec.startedAt }} · {{ rec.energy }} · {{ rec.stopReason }}</div>
               </li>
             </ul>
             <p v-else class="empty-inline">暂无最近充电记录</p>
           </div>
 
-          <div class="sub-card">
+          <div class="inset sub-card">
             <h3>最近告警摘要</h3>
             <ul v-if="recentAlerts.length" class="compact-list">
               <li v-for="(alert, idx) in recentAlerts" :key="alert.code || idx">
                 <div class="compact-top">
                   <strong class="alert-code mono">{{ alert.code }}</strong>
-                  <span class="status-tag danger-soft">{{ alert.status || '告警' }}</span>
+                  <span class="badge badge--dot badge--danger">{{ alert.status || '告警' }}</span>
                 </div>
-                <div class="compact-sub">{{ alert.name }} · {{ alert.reportedAt }}</div>
+                <div class="compact-sub tabular">{{ alert.name }} · {{ alert.reportedAt }}</div>
               </li>
             </ul>
             <p v-else class="empty-inline">暂无最近告警</p>
@@ -577,7 +610,7 @@
         </header>
 
         <div class="modal-body">
-          <div class="readonly-snapshot">
+          <div class="inset readonly-snapshot">
             <div><span>客户</span><strong>{{ textOrDash(device.customerName) }}</strong></div>
             <div><span>桩 SN</span><strong class="mono">{{ textOrDash(deviceSn) }}</strong></div>
             <div><span>质保</span><strong>{{ textOrDash(device.warrantyStatus) }}<template v-if="device.warrantyUntil">（至 {{ device.warrantyUntil }}）</template></strong></div>
@@ -651,8 +684,8 @@
             <p v-if="createError" class="form-error" role="alert">{{ createError }}</p>
 
             <div class="form-actions">
-              <button type="button" class="btn secondary" :disabled="isBusy" @click="closeCreateModal">取消</button>
-              <button type="submit" class="btn primary" :disabled="isBusy || !canSubmitDevice">
+              <button type="button" class="btn btn--secondary" :disabled="isBusy" @click="closeCreateModal">取消</button>
+              <button type="submit" class="btn btn--primary" :disabled="isBusy || !canSubmitDevice">
                 {{ submitting ? '提交建单中…' : '确认创建问题单' }}
               </button>
             </div>
@@ -772,16 +805,37 @@ function isSourceDegraded(keyword) {
 
 function onlineTone(status) {
   const text = String(status || '')
-  if (text.includes('在线')) return 'tone-ok'
-  if (text.includes('离线') || text.includes('故障')) return 'tone-danger'
-  return 'tone-muted'
+  if (text.includes('在线')) return 'badge--success'
+  if (text.includes('离线') || text.includes('故障')) return 'badge--danger'
+  return ''
+}
+
+function currentStatusTone(status) {
+  const text = String(status || '')
+  if (text.includes('告警') || text.includes('故障') || text.includes('异常') || text.includes('离线')) {
+    return 'badge--danger'
+  }
+  if (text.includes('充') || text.includes('待') || text.includes('维护')) {
+    return 'badge--warning'
+  }
+  if (text.includes('正常') || text.includes('空闲')) {
+    return 'badge--success'
+  }
+  return ''
 }
 
 function warrantyTone(status) {
   const text = String(status || '')
-  if (text.includes('在保')) return 'tone-ok'
-  if (text.includes('过保')) return 'tone-danger'
-  return 'tone-warn'
+  if (text.includes('在保')) return 'badge--success'
+  if (text.includes('过保')) return 'badge--danger'
+  return 'badge--warning'
+}
+
+function statusBadgeClass(tone) {
+  if (tone === 'processing' || tone === 'follow' || tone === 'onsite') return 'badge--brand'
+  if (tone === 'waiting' || tone === 'dispatch' || tone === 'triage' || tone === 'verify') return 'badge--warning'
+  if (tone === 'danger-soft') return 'badge--danger'
+  return ''
 }
 
 function customerTypeLabel(type) {
@@ -1256,24 +1310,27 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .source-pill {
-  padding: 10px 12px;
-  border-radius: 9px;
-  border: 1px solid transparent;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg, 10px);
+  border: 1px solid var(--border-default, #e2e7e7);
+  background: var(--bg-surface, #ffffff);
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
 .source-pill.ok {
-  background: #e8f6f4;
-  border-color: #c5e4e1;
-  color: #0f766e;
+  background: var(--bg-surface, #ffffff);
+  border-color: var(--border-default, #e2e7e7);
+  box-shadow: inset 3px 0 0 var(--success-solid, #1f8f5c);
+  color: var(--success-fg, #18794e);
 }
 
 .source-pill.degraded {
-  background: #fdecec;
-  border-color: #f5c2be;
-  color: #c0362c;
+  background: var(--danger-bg, #fdeeec);
+  border-color: var(--danger-border, #f4c5c0);
+  box-shadow: inset 3px 0 0 var(--danger-solid, #c0362c);
+  color: var(--danger-fg, #c0362c);
 }
 
 .source-pill-top {
@@ -1292,8 +1349,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .source-name {
-  font-size: 12px;
-  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #152020);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1301,19 +1359,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
 .source-badge {
   margin-left: auto;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   flex: none;
 }
 
 .source-note {
   font-size: 12px;
-  line-height: 1.4;
+  color: var(--text-secondary, #4a5656);
+  line-height: 1.45;
 }
 
 .source-time {
-  font-size: 11px;
-  opacity: 0.8;
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
 }
 
 /* 空状态 */
@@ -1426,20 +1485,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   color: #c0362c;
 }
 
-/* 键值网格 */
+/* 键值网格（去灰底框，仅保留清晰 label/value 层级） */
 .kv-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  column-gap: var(--space-6, 24px);
+  row-gap: var(--space-4, 16px);
   margin: 0;
 }
 
 .kv-item {
   min-width: 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--canvas, #f5f7fa);
-  border: 1px solid var(--line, #eaeef2);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .kv-item.kv-span-2 {
@@ -1451,47 +1510,55 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .kv-item.kv-degraded {
-  background: #fdf4f3;
-  border-color: #f5c2be;
+  padding: 6px 10px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--danger-bg, #fdeeec);
 }
 
 .kv-item.kv-degraded dd {
-  color: #c0362c;
+  color: var(--danger-fg, #c0362c);
 }
 
 .kv-item dt {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
   margin-bottom: 4px;
 }
 
 .kv-item dd {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #0f172a;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-primary, #152020);
   overflow-wrap: anywhere;
 }
 
 .strong-val {
-  color: #0f766e !important;
+  color: var(--brand-700, #0f766e) !important;
+  font-weight: 600 !important;
 }
 
 .telemetry-box {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px !important;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px !important;
   font-weight: 500 !important;
-  color: #1e293b !important;
+  color: var(--text-secondary, #4a5656) !important;
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-subtle, #f8fafa);
 }
 
 .sub-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-left: 6px;
-  padding: 1px 6px;
+  padding: 0 6px;
+  height: 20px;
   border-radius: 4px;
-  background: #e2e8f0;
-  color: #475569;
-  font-size: 11px;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--text-secondary, #4a5656);
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -1660,51 +1727,52 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 600;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--neutral-bg, #f1f4f4);
+  color: var(--neutral-fg, #4a5656);
 }
 
 .status-tag i {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.status-tag.processing { background: #e8f6f4; color: #0f766e; }
-.status-tag.waiting { background: #fef3c7; color: #b45309; }
-.status-tag.dispatch { background: #eef2ff; color: #4338ca; }
-.status-tag.onsite { background: #e0f2fe; color: #0369a1; }
-.status-tag.verify { background: #f3e8ff; color: #7e22ce; }
-.status-tag.closed { background: #f1f5f9; color: #475569; }
-.status-tag.triage { background: #fce7f3; color: #9d174d; }
-.status-tag.follow { background: #ecfccb; color: #3f6212; }
-.status-tag.danger-soft { background: #fdecec; color: #c0362c; }
+.status-tag.processing { background: var(--brand-50, #e8f6f4); color: var(--brand-700, #0f766e); }
+.status-tag.waiting { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-tag.dispatch { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-tag.onsite { background: var(--info-bg, #edf3f9); color: var(--info-fg, #2f5f8a); }
+.status-tag.verify { background: var(--warning-bg, #fef5e6); color: var(--warning-fg, #a15c07); }
+.status-tag.closed { background: var(--neutral-bg, #f1f4f4); color: var(--neutral-fg, #4a5656); }
+.status-tag.triage { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); }
+.status-tag.follow { background: var(--success-bg, #eaf6ef); color: var(--success-fg, #18794e); }
+.status-tag.danger-soft { background: var(--danger-bg, #fdeeec); color: var(--danger-fg, #c0362c); }
 
 .empty-inline {
   margin: 0;
   padding: 6px 0;
   font-size: 12px;
-  color: #8a96a5;
+  color: var(--text-tertiary, #7a8686);
 }
 
 /* 第 6 段：关联工单与充电告警摘要 */
 .summary-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .kpi-tile {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--canvas, #f5f7fa);
-  border: 1px solid var(--line, #eaeef2);
+  padding: 12px 14px;
+  border-radius: var(--radius-lg, 10px);
+  background: var(--bg-subtle, #f8fafa);
+  border: 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1712,22 +1780,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .kpi-label {
-  font-size: 12px;
-  color: #64748b;
+  font-size: 13px;
+  color: var(--text-tertiary, #7a8686);
 }
 
 .kpi-num {
-  font-size: 18px;
-  font-weight: 700;
-  color: #0f172a;
+  font-family: var(--font-num, sans-serif);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #152020);
 }
 
 .kpi-num.accent {
-  color: #0f766e;
+  color: var(--brand-700, #0f766e);
 }
 
 .kpi-num.danger {
-  color: #c0362c;
+  color: var(--danger-fg, #c0362c);
 }
 
 .sub-columns {
@@ -1737,18 +1808,18 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .sub-card {
-  padding: 12px;
-  border-radius: 9px;
-  border: 1px solid var(--line, #eaeef2);
-  background: #fff;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg, 10px);
+  border: 0;
+  background: var(--bg-subtle, #f8fafa);
   min-width: 0;
 }
 
 .sub-card h3 {
   margin: 0 0 10px;
   font-size: 13px;
-  font-weight: 700;
-  color: #0f172a;
+  font-weight: 600;
+  color: var(--text-secondary, #4a5656);
 }
 
 .quick-ticket-list {
@@ -1761,24 +1832,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--line, #eaeef2);
-  border-radius: 7px;
-  background: var(--canvas, #f5f7fa);
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle, #edf0f0);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
   text-align: left;
   cursor: pointer;
   min-width: 0;
 }
 
 .quick-ticket-item:hover {
-  border-color: #0d9488;
-  background: #e8f6f4;
+  border-color: var(--brand-200, #99dbd2);
+  background: var(--brand-50, #e8f6f4);
 }
 
 .order-link-text {
-  color: #0f766e;
+  color: var(--brand-700, #0f766e);
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   flex: none;
 }
 
@@ -1789,7 +1861,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #334155;
+  color: var(--text-primary, #152020);
 }
 
 .compact-list {
@@ -1802,9 +1874,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
 .compact-list li {
   padding: 8px 10px;
-  border-radius: 7px;
-  background: var(--canvas, #f5f7fa);
-  border: 1px solid var(--line, #eaeef2);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-subtle, #edf0f0);
 }
 
 .compact-top {
@@ -1910,8 +1982,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 }
 
 .readonly-snapshot span {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--text-tertiary, #7a8686);
 }
 
 .readonly-snapshot strong {
