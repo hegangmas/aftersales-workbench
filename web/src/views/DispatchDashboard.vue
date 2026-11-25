@@ -1401,7 +1401,7 @@ const scheduleSummaryText = computed(() => {
 
 .bottom-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.98fr) minmax(0, 1.38fr);
   gap: var(--gutter, 16px);
   align-items: stretch;
 }
@@ -2166,7 +2166,8 @@ const scheduleSummaryText = computed(() => {
 
 .schedule-table {
   width: 100%;
-  table-layout: fixed;
+  min-width: 540px;
+  table-layout: auto;
   border-collapse: collapse;
   text-align: center;
 }
@@ -2222,8 +2223,8 @@ const scheduleSummaryText = computed(() => {
 
 .shift-chip {
   display: inline-block;
-  max-width: 100%;
-  padding: 2px 5px;
+  max-width: none;
+  padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
   line-height: 1.4;
