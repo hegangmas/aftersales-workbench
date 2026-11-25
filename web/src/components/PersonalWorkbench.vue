@@ -1,12 +1,21 @@
 <template>
-  <article class="personal">
+  <article class="personal" :class="{ 'mobile-compact': mobileCompact }">
+    <div v-if="device && device.simulatedCall" class="call-strip">
+      <span><strong>400 来电弹屏（模拟）</strong> · {{ device.simulatedCall.caller }}</span>
+      <span>通话 {{ device.simulatedCall.duration }} · {{ device.simulatedCall.recordingStatus }}</span>
+    </div>
+
     <header class="personal-head">
       <div>
         <button class="link" type="button" @click="$emit('back')">← 返回列表</button>
         <h1>售后个人工作台</h1>
-        <p class="muted">集中查看设备、历史记录，并完成跟进、回访、派单与转交</p>
+        <p class="muted">集中查看设备档案、SOP 证据判定，并完成跟进、挂起回池、快通道、派单与转交</p>
       </div>
-      <div>
+      <div class="personal-head-actions">
+        <div class="mobile-density" role="group" aria-label="移动端信息密度">
+          <button type="button" :aria-pressed="mobileCompact" @click="mobileCompact = true">主要信息</button>
+          <button type="button" :aria-pressed="!mobileCompact" @click="mobileCompact = false">全部信息</button>
+        </div>
         <button class="btn secondary" type="button" @click="$emit('intake')">查桩与建单</button>
         <button class="btn secondary" type="button" @click="$emit('mine')">我的待办</button>
       </div>
@@ -15,6 +24,14 @@
     <div class="case-bar">
       <strong>{{ number }} · {{ problem.title }}</strong>
       <span class="status" :class="status.tone"><i></i>{{ status.label }}</span>
+      <span v-if="problem.channel" class="mini-tag info">{{ channelLabel(problem.channel) }}</span>
+      <span v-if="problem.grade" class="mini-tag" :class="problem.grade === 'C' ? 'warn' : 'info'">
+        {{ problem.grade }}级<template v-if="problem.disposalType"> · {{ disposalLabel(problem.disposalType) }}</template>
+      </span>
+      <span v-if="problem.suspendReason && problem.state === 'waiting'" class="mini-tag warn">{{ suspendLabel(problem.suspendReason) }}</span>
+      <span v-if="problem.escalationLevel && problem.escalationLevel !== 'none'" class="mini-tag danger">{{ escalationLabel(problem.escalationLevel) }}</span>
+      <span v-if="isCompromise" class="mini-tag danger">妥协工单</span>
+      <span v-if="sla" class="mini-tag" :class="sla.overdue ? 'danger' : 'muted'">{{ sla.text }}</span>
       <span>负责人：{{ ownerText }}</span>
       <span>下一步：{{ nextAction }}</span>
       <span v-if="problem.pendingFollowup" class="pending">{{ problem.pendingFollowup.overdue ? '回访已到期' : '待回访' }}</span>
@@ -23,14 +40,18 @@
 
     <div class="personal-grid">
       <section class="panel">
-        <h2>客户与设备</h2>
-        <p class="muted">客户、安装和出厂资料为模拟数据，尚未接入</p>
+        <h2>客户与设备档案</h2>
+        <p class="muted">客户、MES、质保与 400 为模拟数据（外部系统未接入）</p>
         <dl class="personal-facts">
           <dt>桩编码</dt><dd>{{ problem.device || '未关联' }}</dd>
-          <dt>问题类型</dt><dd>{{ kindText }}<span v-if="problem.category"> · {{ problem.category }}</span></dd>
-          <dt>客户与地址</dt><dd>李先生 · 合肥市滨湖新区（模拟）</dd>
-          <dt>设备型号</dt><dd>7kW 交流桩（模拟）</dd>
-          <dt>出厂测试</dt><dd>测试通过（MES 模拟）</dd>
+          <dt>问题分类</dt><dd>{{ kindText }}<span v-if="problem.category"> · {{ problem.category }}</span></dd>
+          <dt>客户与地址</dt><dd>{{ device?.customerName || '李先生（模拟）' }} · {{ device?.siteAddress || '合肥市滨湖新区（模拟）' }}</dd>
+          <dt>设备型号</dt><dd>{{ device?.model || '7kW 交流桩（模拟）' }}</dd>
+          <dt>在线 / 状态</dt><dd>{{ device?.onlineStatus || '在线（模拟）' }} · {{ device?.currentStatus || '告警中（模拟）' }}</dd>
+          <dt class="detail-extra">出厂 / 质保</dt>
+          <dd class="detail-extra">{{ device?.manufacturedAt || '2025-06-18（MES 模拟）' }} · {{ device?.warrantyStatus || '在保（模拟）' }}</dd>
+          <dt class="detail-extra">程序 / SIM</dt>
+          <dd class="detail-extra">{{ device?.firmwareVersion || 'v2.4.18（模拟）' }} · {{ device?.simExpiresAt || '2027-05-31（模拟）' }}</dd>
           <dt>设备数据</dt>
           <dd>
             <template v-if="deviceLoading">查询中…</template>
@@ -42,7 +63,7 @@
           </dd>
         </dl>
         <div v-if="device" class="personal-box">
-          <strong>设备信息</strong>
+          <strong>当前故障摘要</strong>
           <p>{{ device.fault || '暂无故障摘要' }}</p>
           <small>{{ device.observedAt || '时间未知' }}</small>
         </div>
@@ -60,34 +81,44 @@
             <span>{{ displayStatus(item).label }}</span>
           </li>
         </ul>
-
-        <h3>故障排查与知识</h3>
-        <p class="muted">知识库、AI 排查、素材收集与电话集成尚未接入；以下为模拟展示</p>
-        <div class="personal-box">
-          <strong>模拟排查提示</strong>
-          <p>核对设备在线状态及最近告警，收集故障指示照片，按已审核的售后规范排查。</p>
-        </div>
       </section>
 
       <section class="panel">
-        <h2>当前问题与记录</h2>
+        <h2>当前问题、SOP 与证据</h2>
         <div class="personal-box">
           <strong>客户描述：</strong>{{ problem.description || '暂无描述' }}
+          <p v-if="problem.faultOccurredAt" class="muted">故障发生时点：{{ dateLabel(problem.faultOccurredAt) }}</p>
+          <p v-if="problem.escalationReason" class="muted">升级/妥协说明：{{ problem.escalationReason }}</p>
         </div>
-        <div class="personal-data">
+
+        <div class="personal-data detail-extra">
           <div class="personal-box">
-            <strong>最近充电记录</strong>
-            <p>11-25 09:15 · 充电完成 · 12.6 kWh</p>
-            <p>11-24 19:30 · 充电中断 · 3.2 kWh</p>
-            <p class="muted">模拟数据 · 仅用于展示</p>
+            <strong>最近充电记录（模拟）</strong>
+            <template v-if="device?.chargingRecords?.length">
+              <p v-for="rec in device.chargingRecords" :key="rec.orderNo">
+                {{ rec.startedAt }} · {{ rec.status }} · {{ rec.energy }}（{{ rec.stopReason }}）
+              </p>
+            </template>
+            <p v-else class="muted">暂无模拟充电记录</p>
           </div>
           <div class="personal-box">
-            <strong>最近故障告警</strong>
-            <p>11-25 09:40 · PE 断线告警</p>
-            <p>11-24 19:32 · 充电启动异常</p>
-            <p class="muted">模拟数据 · 仅用于展示</p>
+            <strong>最近故障告警（模拟）</strong>
+            <template v-if="device?.recentAlerts?.length">
+              <p v-for="al in device.recentAlerts" :key="al.code + al.reportedAt">
+                {{ al.reportedAt }} · {{ al.name }}（{{ al.status }}）
+              </p>
+            </template>
+            <p v-else class="muted">暂无模拟故障告警</p>
           </div>
         </div>
+
+        <SopEvidencePanel
+          :problem="problem"
+          :busy="busy"
+          :can-process="canProcess"
+          @add-evidence="$emit('add-evidence', $event)"
+          @assess="$emit('assess', $event)"
+        />
 
         <h3>处理时间线</h3>
         <ol v-if="problem.activities?.length" class="timeline personal-timeline">
@@ -98,33 +129,35 @@
         </ol>
         <p v-else class="muted">暂无处理记录</p>
 
-        <template v-if="problem.callbackResults?.length">
-          <h3>实际回访</h3>
-          <ul class="record-list">
-            <li v-for="(item, index) in problem.callbackResults" :key="index">
-              <time>{{ dateLabel(item.contactedAt) }} · {{ item.actor }}</time>
-              <div>{{ item.note }}</div>
-              <div v-if="item.evidence" class="muted">{{ evidenceLabels[item.evidenceSource] }} · {{ item.evidence }}</div>
+        <div class="detail-extra">
+          <template v-if="problem.callbackResults?.length">
+            <h3>实际回访</h3>
+            <ul class="record-list">
+              <li v-for="(item, index) in problem.callbackResults" :key="index">
+                <time>{{ dateLabel(item.contactedAt) }} · {{ item.actor }}</time>
+                <div>{{ item.note }}</div>
+                <div v-if="item.evidence" class="muted">{{ evidenceLabels[item.evidenceSource] }} · {{ item.evidence }}</div>
+              </li>
+            </ul>
+          </template>
+
+          <h3>已关联现场单与回执</h3>
+          <p v-if="!problem.fieldOrders?.length" class="muted">尚未关联现场单</p>
+          <ul v-else class="record-list">
+            <li v-for="item in problem.fieldOrders" :key="item.externalNo">
+              {{ item.externalNo }} · {{ fieldLabels[item.state] || item.state }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
             </li>
           </ul>
-        </template>
 
-        <h3>已关联现场单与回执</h3>
-        <p v-if="!problem.fieldOrders?.length" class="muted">尚未关联现场单</p>
-        <ul v-else class="record-list">
-          <li v-for="item in problem.fieldOrders" :key="item.externalNo">
-            {{ item.externalNo }} · {{ fieldLabels[item.state] || item.state }}<span v-if="item.receipt"> · {{ item.receipt }}</span>
-          </li>
-        </ul>
-
-        <h3>认领与转交</h3>
-        <p v-if="!problem.ownershipEvents?.length" class="muted">还没有认领或转交记录</p>
-        <ul v-else class="record-list">
-          <li v-for="(item, index) in problem.ownershipEvents" :key="index">
-            <time>{{ dateLabel(item.createdAt) }} · {{ item.actor }}</time>
-            {{ item.action === 'claim' ? '认领' : '由 ' + ownerName(item.fromOwner) + ' 交给 ' + item.toOwner }}<span v-if="item.reason"> · {{ item.reason }}</span>
-          </li>
-        </ul>
+          <h3>认领与转交</h3>
+          <p v-if="!problem.ownershipEvents?.length" class="muted">还没有认领或转交记录</p>
+          <ul v-else class="record-list">
+            <li v-for="(item, index) in problem.ownershipEvents" :key="index">
+              <time>{{ dateLabel(item.createdAt) }} · {{ item.actor }}</time>
+              {{ item.action === 'claim' ? '认领' : '由 ' + ownerName(item.fromOwner) + ' 交给 ' + ownerName(item.toOwner) }}<span v-if="item.reason"> · {{ item.reason }}</span>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <aside id="problem-actions" class="panel">
@@ -139,6 +172,17 @@
           <textarea id="note" v-model="draft.note" class="text-area" maxlength="1500" placeholder="记录沟通内容、排查情况及下一步安排"></textarea>
           <button class="btn primary" type="submit" :disabled="busy || !draft.note.trim()">保存跟进</button>
         </form>
+
+        <WorkflowExtras
+          :problem="problem"
+          :busy="busy"
+          :can-process="canProcess"
+          :field-in-progress="fieldInProgress"
+          :evidence-labels="evidenceLabels"
+          @suspend="$emit('suspend', $event)"
+          @quick-close="$emit('quick-close', $event)"
+          @escalate="$emit('escalate', $event)"
+        />
 
         <FieldOrders
           :editable="canProcess"
@@ -232,8 +276,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import FieldOrders from './FieldOrders.vue'
+import SopEvidencePanel from './SopEvidencePanel.vue'
+import WorkflowExtras from './WorkflowExtras.vue'
 import { findProblems, lookupDevice } from '../api/workbench'
-import { displayStatus, isUnowned, kindLabel, orderNumber } from '../status'
+import { channelLabel, displayStatus, disposalLabel, escalationLabel, isUnowned, kindLabel, orderNumber, slaPresentation, suspendLabel } from '../status'
 
 const props = defineProps({
   problem: { type: Object, required: true },
@@ -251,15 +297,19 @@ const props = defineProps({
 
 defineEmits([
   'back', 'intake', 'mine', 'open', 'claim', 'save-note',
-  'save-schedule', 'begin-callback', 'save-outcome', 'handoff', 'withdraw', 'link', 'field-result'
+  'save-schedule', 'begin-callback', 'save-outcome', 'handoff', 'withdraw', 'link', 'field-result',
+  'suspend', 'quick-close', 'escalate', 'add-evidence', 'assess'
 ])
 
 const fieldLabels = { linked: '已关联', in_progress: '处理中', complete: '完工', rejected: '拒单', cancelled: '取消' }
+const mobileCompact = ref(true)
 const number = computed(() => orderNumber(props.problem))
 const status = computed(() => displayStatus(props.problem))
 const unowned = computed(() => isUnowned(props.problem))
 const ownerText = computed(() => unowned.value ? '无主' : props.problem.owner)
 const kindText = computed(() => kindLabel(props.problem.kind) || '问题')
+const isCompromise = computed(() => Number(props.problem.compromiseFlag || 0) === 1 || props.problem.compromiseFlag === true)
+const sla = computed(() => slaPresentation(props.problem.slaDueAt, props.problem.state))
 
 const device = ref(null)
 const history = ref([])

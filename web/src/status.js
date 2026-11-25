@@ -66,6 +66,72 @@ export function kindLabel(kind) {
   return { fault: '故障', consult: '咨询', service: '服务' }[kind] || ''
 }
 
+export const CHANNEL_LABELS = {
+  phone: '电话',
+  '400': '400电话',
+  miniprogram: '客户小程序',
+  provider: '服务商扫码',
+  wecom: '企微群'
+}
+
+export const SUSPEND_LABELS = {
+  customer_reboot: '待客户重启',
+  customer_evidence: '待传证据',
+  parts_wait: '待备件',
+  field_wait: '待乐装回传'
+}
+
+export const DISPOSAL_LABELS = {
+  remote: '远程处置',
+  part: '换件',
+  replace: '换装',
+  onsite: '上门排查'
+}
+
+export const EVIDENCE_TYPE_LABELS = {
+  photo: '现场照片',
+  video: '短视频/录屏',
+  timestamp_log: '故障时点/日志',
+  site_compare: '同站对照',
+  swap_test: '替换测试',
+  platform_data: '平台报文/充电记录'
+}
+
+export const ESCALATION_LABELS = {
+  none: '未升级',
+  l2: '已升级二线',
+  expert: '已升级专家'
+}
+
+export function channelLabel(channel) {
+  return CHANNEL_LABELS[channel] || ''
+}
+
+export function suspendLabel(reason) {
+  return SUSPEND_LABELS[reason] || ''
+}
+
+export const suspendReasonLabel = suspendLabel
+
+export function disposalLabel(type) {
+  return DISPOSAL_LABELS[type] || ''
+}
+
+export function evidenceTypeLabel(type) {
+  return EVIDENCE_TYPE_LABELS[type] || ''
+}
+
+export function escalationLabel(level) {
+  return ESCALATION_LABELS[level] || ''
+}
+
+export function slaPresentation(slaDueAt, state) {
+  if (state === 'resolved' || !slaDueAt) return null
+  const stamp = String(slaDueAt).replace('T', ' ').replace(/\.\d+/, '').replace(/Z|[+-]\d\d:\d\d$/, '').slice(0, 16)
+  if (stamp <= shanghaiStamp()) return { text: 'SLA 已超时', overdue: true }
+  return { text: 'SLA ' + stamp.slice(5, 16), overdue: false }
+}
+
 export function avatarTone(name) {
   const tones = ['teal', 'blue', 'purple', 'pink']
   const text = String(name || '')

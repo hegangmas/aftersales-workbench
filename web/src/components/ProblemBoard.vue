@@ -61,7 +61,10 @@
                 <span v-if="kindLabel(item.kind)" class="type-tag" :class="item.kind">{{ kindLabel(item.kind) }}</span>
                 <button type="button" class="title-button clip" @click="$emit('open', item.id)">{{ item.title }}</button>
               </div>
-              <div v-if="item.category" class="sub clip">{{ item.category }}</div>
+              <div v-if="item.category" class="sub clip">{{ item.category }}<span v-if="item.channel"> · {{ channel(item.channel) }}</span></div>
+              <div v-if="badges(item).length" class="meta-tags">
+                <span v-for="tag in badges(item)" :key="tag.text" class="mini-tag" :class="tag.tone">{{ tag.text }}</span>
+              </div>
             </td>
             <td><div class="device-code">{{ item.device || '无' }}</div></td>
             <td><span class="status" :class="status(item).tone"><i></i>{{ status(item).label }}</span></td>
@@ -95,7 +98,10 @@
           <button type="button" class="title-button" @click="$emit('open', item.id)">{{ item.title }}</button>
         </div>
         <div class="ticket-meta">
-          <div class="device-code">{{ item.device || '无' }}<span v-if="item.category"> · {{ item.category }}</span></div>
+          <div class="device-code">{{ item.device || '无' }}<span v-if="item.category"> · {{ item.category }}</span><span v-if="item.channel"> · {{ channel(item.channel) }}</span></div>
+          <div v-if="badges(item).length" class="meta-tags">
+            <span v-for="tag in badges(item)" :key="tag.text" class="mini-tag" :class="tag.tone">{{ tag.text }}</span>
+          </div>
           <div class="owner" :class="{ unowned: unowned(item) }"><span>{{ unowned(item) ? '未认领' : item.owner }}</span></div>
           <div class="callback" :class="due(item).tone">{{ due(item).text }}</div>
         </div>
@@ -115,7 +121,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { BUCKET_LABELS, avatarTone, displayStatus, duePresentation, initial, isUnowned, kindLabel, orderNumber, rowAction, stateCount, updatedPresentation, visibleBuckets } from '../status'
+import { BUCKET_LABELS, avatarTone, channelLabel, displayStatus, disposalLabel, duePresentation, escalationLabel, initial, isUnowned, kindLabel, orderNumber, rowAction, slaPresentation, stateCount, suspendLabel, updatedPresentation, visibleBuckets } from '../status'
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -170,6 +176,28 @@ function unowned(item) { return isUnowned(item) }
 function tone(name) { return avatarTone(name) }
 function due(item) { return duePresentation(item.nextDueAt) }
 function updated(value) { return updatedPresentation(value) }
+function channel(value) { return channelLabel(value) }
+function badges(item) {
+  const list = []
+  if (item.grade) {
+    const disposal = item.disposalType ? '·' + disposalLabel(item.disposalType) : ''
+    list.push({ text: item.grade + '级' + disposal, tone: item.grade === 'C' ? 'warn' : 'info' })
+  }
+  if (item.suspendReason && item.state === 'waiting') {
+    list.push({ text: suspendLabel(item.suspendReason), tone: 'warn' })
+  }
+  if (item.escalationLevel && item.escalationLevel !== 'none') {
+    list.push({ text: escalationLabel(item.escalationLevel), tone: 'danger' })
+  }
+  if (Number(item.compromiseFlag || 0) === 1 || item.compromiseFlag === true) {
+    list.push({ text: '妥协工单', tone: 'danger' })
+  }
+  const sla = slaPresentation(item.slaDueAt, item.state)
+  if (sla) {
+    list.push({ text: sla.text, tone: sla.overdue ? 'danger' : 'muted' })
+  }
+  return list
+}
 function hint(item) {
   if (item.nextStep) return item.nextStep
   const id = displayStatus(item).id

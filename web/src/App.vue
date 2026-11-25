@@ -121,6 +121,11 @@
         @withdraw="withdrawDispatch"
         @link="saveFieldLink"
         @field-result="saveFieldResult"
+        @suspend="suspendTicket"
+        @quick-close="quickCloseTicket"
+        @escalate="escalateTicket"
+        @add-evidence="saveEvidence"
+        @assess="saveAssessment"
       />
     </main>
   </div>
@@ -140,7 +145,7 @@ import QueueList from './components/QueueList.vue'
 import { emptyFilters, useBoardQueues } from './composables/useBoardQueues'
 import { useProblemDraft } from './composables/useProblemDraft'
 import { initial, orderNumber, summaryScope } from './status'
-import { currentAccount, login, logout, addFollowup, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, setAccountEnabled, withdrawField } from './api/workbench'
+import { currentAccount, login, logout, addEvidence, addFollowup, assessProblem, assignableAccounts, changePassword, claimProblem, createAccount, createProblem, escalateProblem, findProblems, finishCallback, handoffProblem, linkFieldOrder, listAccounts, loadProblem, lookupDevice, quickCloseProblem, recordFieldResult, resetAccountPassword as resetAccountPasswordApi, scheduleCallback, setAccountEnabled, suspendProblem, withdrawField } from './api/workbench'
 
 const REMEMBER_KEY = 'songguo-workbench-username'
 const pageSize = 10
@@ -694,14 +699,62 @@ function search() {
     description.value = ''
   })
 }
-function create() {
+function create(meta) {
   return run(async () => {
-    const created = await createProblem({ device: device.value.device, title: title.value.trim(), description: description.value.trim() })
+    const payload = {
+      device: device.value.device,
+      title: title.value.trim(),
+      description: description.value.trim(),
+      channel: meta?.channel || '400',
+      category: meta?.category || '充电故障',
+      faultOccurredAt: meta?.faultOccurredAt || null
+    }
+    const created = await createProblem(payload)
     returnView.value = 'intake'
     view.value = 'detail'
     await showProblem(created.id)
     await refreshQueues()
   })
+}
+function suspendTicket(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await suspendProblem(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function quickCloseTicket(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await quickCloseProblem(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function escalateTicket(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await escalateProblem(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function saveEvidence(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await addEvidence(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
+}
+function saveAssessment(form) {
+  return run(async () => {
+    const id = problem.value.id
+    await assessProblem(id, { ...form, expectedVersion: problem.value.version })
+    await showProblem(id)
+    await refreshQueues()
+  }, { conflict: true })
 }
 function saveNote() {
   return run(async () => {
