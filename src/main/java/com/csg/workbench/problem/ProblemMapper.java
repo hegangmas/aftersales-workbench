@@ -12,17 +12,25 @@ import java.time.LocalDateTime;
 
 @Mapper
 public interface ProblemMapper {
-    @Insert("INSERT INTO problem (id, scenario, title, category, channel, description, kind, device) "
-        + "VALUES (#{id}, 'JAVA-TRIAL', #{title}, '充电故障', 'phone', #{description}, 'fault', #{device})")
+    @Insert("INSERT INTO problem (id, scenario, title, category, channel, description, kind, device, fault_occurred_at, sla_due_at) "
+        + "VALUES (#{id}, 'JAVA-TRIAL', #{title}, #{category}, #{channel}, #{description}, 'fault', #{device}, "
+        + "#{faultOccurredAt,jdbcType=TIMESTAMP}, #{slaDueAt,jdbcType=TIMESTAMP})")
     void insertProblem(@Param("id") String id, @Param("title") String title,
-                       @Param("description") String description, @Param("device") String device);
+                       @Param("category") String category, @Param("channel") String channel,
+                       @Param("description") String description, @Param("device") String device,
+                       @Param("faultOccurredAt") LocalDateTime faultOccurredAt,
+                       @Param("slaDueAt") LocalDateTime slaDueAt);
 
     @Insert("INSERT INTO activity (problem_id, actor, action, note) "
         + "VALUES (#{id}, #{actor}, #{action}, #{note})")
     void insertActivity(@Param("id") String id, @Param("actor") String actor, @Param("action") String action, @Param("note") String note);
 
     @Select("SELECT id, display_number AS displayNumber, title, device, state, description, resume_state AS resumeState, "
-        + "category, kind, owner, version FROM problem WHERE id = #{id}")
+        + "category, kind, channel, owner, version, fault_occurred_at AS faultOccurredAt, "
+        + "suspend_reason AS suspendReason, grade, disposal_type AS disposalType, "
+        + "compromise_flag AS compromiseFlag, escalation_level AS escalationLevel, "
+        + "escalation_reason AS escalationReason, sla_due_at AS slaDueAt, "
+        + "auto_approval_note AS autoApprovalNote FROM problem WHERE id = #{id}")
     Map<String, Object> findProblem(@Param("id") String id);
 
     @Select("SELECT id FROM problem WHERE display_number = #{number}")
@@ -171,4 +179,39 @@ public interface ProblemMapper {
         + "AND external_no = #{number} AND state IN ('linked', 'in_progress') AND state <> #{state}")
     int updateFieldOrder(@Param("id") String id, @Param("number") String number,
                          @Param("state") String state, @Param("receipt") String receipt);
+
+    @Update("UPDATE problem SET state = 'waiting', suspend_reason = #{reason}, owner = #{owner}, "
+        + "version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int suspendProblem(@Param("id") String id, @Param("reason") String reason,
+                       @Param("owner") String owner, @Param("version") int version);
+
+    @Update("UPDATE problem SET escalation_level = #{level}, escalation_reason = #{reason,jdbcType=VARCHAR}, "
+        + "compromise_flag = #{compromise}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+    int updateEscalation(@Param("id") String id, @Param("level") String level,
+                         @Param("reason") String reason, @Param("compromise") int compromise,
+                         @Param("version") int version);
+
+    @Update("UPDATE problem SET grade = #{grade}, disposal_type = #{disposalType}, "
+        + "auto_approval_note = #{autoApprovalNote,jdbcType=VARCHAR}, version = version + 1 "
+        + "WHERE id = #{id} AND version = #{version}")
+    int updateAssessment(@Param("id") String id, @Param("grade") String grade,
+                         @Param("disposalType") String disposalType,
+                         @Param("autoApprovalNote") String autoApprovalNote,
+                         @Param("version") int version);
+
+    @Select("SELECT disposal_type FROM problem WHERE id = #{id}")
+    String disposalType(@Param("id") String id);
+
+    @Insert("INSERT INTO evidence_item (problem_id, evidence_type, source, file_name, note, actor) "
+        + "VALUES (#{id}, #{evidenceType}, #{source}, #{fileName}, #{note}, #{actor})")
+    void insertEvidence(@Param("id") String id, @Param("evidenceType") String evidenceType,
+                        @Param("source") String source, @Param("fileName") String fileName,
+                        @Param("note") String note, @Param("actor") String actor);
+
+    @Select("SELECT id, evidence_type AS evidenceType, source, file_name AS fileName, note, actor, "
+        + "created_at AS createdAt FROM evidence_item WHERE problem_id = #{id} ORDER BY id DESC")
+    List<Map<String, Object>> listEvidences(@Param("id") String id);
+
+    @Select("SELECT COUNT(*) FROM evidence_item WHERE problem_id = #{id}")
+    int countEvidences(@Param("id") String id);
 }

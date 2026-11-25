@@ -319,6 +319,44 @@ class ProblemServiceTest {
     }
 
     @Test
+    void v11AssessmentEnforcesCGradeAndEvidenceGateForReplace() {
+        ResponseStatusException cReplace = assertThrows(ResponseStatusException.class,
+            () -> service.assess(ID, "C", "replace", "尝试C级换装", 2, "assess-c-replace"));
+        assertEquals(HttpStatus.BAD_REQUEST, cReplace.getStatus());
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "operator.1"));
+        when(mapper.countEvidences(ID)).thenReturn(0, 1);
+        ResponseStatusException noEvidence = assertThrows(ResponseStatusException.class,
+            () -> service.assess(ID, "A", "replace", "无证据换装", 2, "assess-no-ev"));
+        assertEquals(HttpStatus.CONFLICT, noEvidence.getStatus());
+        when(mapper.updateAssessment(eq(ID), eq("A"), eq("replace"), anyString(), eq(2))).thenReturn(1);
+        service.assess(ID, "A", "replace", "有日志佐证", 2, "assess-ok-ev");
+        verify(mapper).insertActivity(eq(ID), eq("operator.1"), eq("assessment"), anyString());
+    }
+
+    @Test
+    void v11SuspendQuickCloseAndEscalateRespectBoundaries() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "operator.1"));
+        when(mapper.activeFieldOrders(ID)).thenReturn(0);
+        when(mapper.suspendProblem(ID, "customer_reboot", "early", 3)).thenReturn(1);
+        service.suspend(ID, "customer_reboot", true, "客户断电后观察", null, 3, "suspend-key-1");
+        verify(mapper).insertOwnership(ID, "operator.1", "operator.1", "early", "handoff", "挂起回池：等待客户断电重启");
+
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 4, "operator.1"));
+        when(mapper.disposalType(ID)).thenReturn("replace", "remote");
+        ResponseStatusException blocked = assertThrows(ResponseStatusException.class,
+            () -> service.quickClose(ID, "想快结", "platform", "平台记录", 4, "qc-key-1"));
+        assertEquals(HttpStatus.CONFLICT, blocked.getStatus());
+        when(mapper.changeState(ID, "resolved", 4)).thenReturn(1);
+        service.quickClose(ID, "远程重启恢复", "platform", "平台已恢复正常充电", 4, "qc-key-2");
+        verify(mapper).verify(ID, "operator.1", "platform", "平台已恢复正常充电");
+
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 5, "operator.1"));
+        when(mapper.updateEscalation(ID, "l2", "客户不配合排查", 1, 5)).thenReturn(1);
+        service.escalate(ID, "l2", "客户不配合排查", true, 5, "esc-key-1");
+        verify(mapper).insertActivity(eq(ID), eq("operator.1"), eq("escalate"), anyString());
+    }
+
+    @Test
     void dueAndMineRejectMalformedCursorWithBadRequest() {
         ResponseStatusException badDueTime = assertThrows(ResponseStatusException.class,
             () -> service.due("team", "not-a-time|12", 20));
@@ -332,6 +370,45 @@ class ProblemServiceTest {
             () -> service.mine("not-a-time|id-1", 20));
         assertEquals(HttpStatus.BAD_REQUEST, badMine.getStatus());
         assertEquals("分页参数无效", badMine.getReason());
+    }
+
+    @Test
+    void suspendWithReturnToPoolResetsOwnerAndLogsOwnership() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 3, "operator.1"));
+        when(mapper.activeFieldOrders(ID)).thenReturn(0);
+        when(mapper.suspendProblem(ID, "customer_reboot", "early", 3)).thenReturn(1);
+        service.suspend(ID, "customer_reboot", true, "等待重启结果", future(), 3, "suspend-key1");
+        verify(mapper).insertOwnership(ID, "operator.1", "operator.1", "early", "handoff", "挂起回池：等待客户断电重启");
+        verify(mapper).insertActivity(eq(ID), eq("operator.1"), eq("suspend"), eq("挂起（等待客户断电重启），已回池共享：等待重启结果"));
+    }
+
+    @Test
+    void quickCloseRejectsReplaceDisposalAndAllowsRemote() {
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "operator.1"), row("open", 3, "operator.1"));
+        when(mapper.activeFieldOrders(ID)).thenReturn(0);
+        when(mapper.disposalType(ID)).thenReturn("replace", "remote");
+        ResponseStatusException blocked = assertThrows(ResponseStatusException.class,
+            () -> service.quickClose(ID, "远程解决", "platform", "平台正常", 2, "quick-close-1"));
+        assertEquals(HttpStatus.CONFLICT, blocked.getStatus());
+        when(mapper.changeState(ID, "resolved", 3)).thenReturn(1);
+        service.quickClose(ID, "远程重启恢复", "platform", "平台显示已正常充电", 3, "quick-close-2");
+        verify(mapper).verify(ID, "operator.1", "platform", "平台显示已正常充电");
+        verify(mapper).changeState(ID, "resolved", 3);
+    }
+
+    @Test
+    void assessmentBlocksGradeCReplaceAndRequiresEvidenceForReplace() {
+        ResponseStatusException gradeC = assertThrows(ResponseStatusException.class,
+            () -> service.assess(ID, "C", "replace", "尝试换装", 1, "assess-key1"));
+        assertEquals(HttpStatus.BAD_REQUEST, gradeC.getStatus());
+        when(mapper.lockProblem(ID)).thenReturn(row("open", 2, "operator.1"), row("open", 3, "operator.1"));
+        when(mapper.countEvidences(ID)).thenReturn(0, 1);
+        ResponseStatusException noEvidence = assertThrows(ResponseStatusException.class,
+            () -> service.assess(ID, "A", "replace", "无证据换装", 2, "assess-key2"));
+        assertEquals(HttpStatus.CONFLICT, noEvidence.getStatus());
+        when(mapper.updateAssessment(eq(ID), eq("A"), eq("replace"), anyString(), eq(3))).thenReturn(1);
+        service.assess(ID, "A", "replace", "证据齐全", 3, "assess-key3");
+        verify(mapper).insertActivity(eq(ID), eq("operator.1"), eq("assessment"), anyString());
     }
 
     @Test

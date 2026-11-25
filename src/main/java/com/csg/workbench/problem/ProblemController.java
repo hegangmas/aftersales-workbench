@@ -24,7 +24,9 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, String> create(@RequestHeader("Idempotency-Key") String requestId,
                                       @Valid @RequestBody CreateProblem request) {
-        return Collections.singletonMap("id", problems.create(request.device, request.title, request.description, requestId));
+        return Collections.singletonMap("id", problems.create(
+            request.device, request.title, request.description,
+            request.channel, request.category, request.faultOccurredAt, requestId));
     }
 
     @GetMapping("/{id}")
@@ -120,6 +122,46 @@ public class ProblemController {
             request.expectedVersion, requestId);
     }
 
+    @PostMapping("/{id}/suspend")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void suspend(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
+                        @Valid @RequestBody SuspendRequest request) {
+        problems.suspend(id, request.reason, Boolean.TRUE.equals(request.returnToPool),
+            request.nextStep, request.dueAt, request.expectedVersion, requestId);
+    }
+
+    @PostMapping("/{id}/quick-close")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void quickClose(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
+                           @Valid @RequestBody QuickCloseRequest request) {
+        problems.quickClose(id, request.note, request.evidenceSource, request.evidence,
+            request.expectedVersion, requestId);
+    }
+
+    @PostMapping("/{id}/escalate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void escalate(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
+                         @Valid @RequestBody EscalateRequest request) {
+        problems.escalate(id, request.level, request.reason, Boolean.TRUE.equals(request.compromise),
+            request.expectedVersion, requestId);
+    }
+
+    @PostMapping("/{id}/evidences")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void addEvidence(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
+                            @Valid @RequestBody EvidenceRequest request) {
+        problems.addEvidence(id, request.evidenceType, request.source, request.fileName,
+            request.note, request.expectedVersion, requestId);
+    }
+
+    @PostMapping("/{id}/assessment")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void assess(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
+                       @Valid @RequestBody AssessmentRequest request) {
+        problems.assess(id, request.grade, request.disposalType, request.note,
+            request.expectedVersion, requestId);
+    }
+
     public static class Versioned {
         @NotNull(message = "请刷新后重试") public Integer expectedVersion;
     }
@@ -160,6 +202,41 @@ public class ProblemController {
         @NotBlank(message = "请填写设备编号") @Size(max = 40, message = "设备编号不能超过40字") public String device;
         @NotBlank(message = "请填写问题标题") @Size(max = 150, message = "问题标题不能超过150字") public String title;
         @NotBlank(message = "请填写现象描述") @Size(max = 1000, message = "现象描述不能超过1000字") public String description;
+        @Size(max = 30, message = "渠道无效") public String channel;
+        @Size(max = 80, message = "故障分类不能超过80字") public String category;
+        public LocalDateTime faultOccurredAt;
+    }
+
+    public static class SuspendRequest extends Versioned {
+        @NotBlank(message = "请选择挂起原因") @Size(max = 40, message = "挂起原因无效") public String reason;
+        public Boolean returnToPool;
+        @Size(max = 500, message = "待确认事项不能超过500字") public String nextStep;
+        public LocalDateTime dueAt;
+    }
+
+    public static class QuickCloseRequest extends Versioned {
+        @NotBlank(message = "请填写完结说明") @Size(max = 1000, message = "完结说明不能超过1000字") public String note;
+        @Size(max = 20, message = "核验来源无效") public String evidenceSource;
+        @NotBlank(message = "请填写完结依据") @Size(max = 1000, message = "完结依据不能超过1000字") public String evidence;
+    }
+
+    public static class EscalateRequest extends Versioned {
+        @NotBlank(message = "请选择升级级别") @Size(max = 20, message = "升级级别无效") public String level;
+        @NotBlank(message = "请填写升级或妥协原因") @Size(max = 500, message = "原因不能超过500字") public String reason;
+        public Boolean compromise;
+    }
+
+    public static class EvidenceRequest extends Versioned {
+        @NotBlank(message = "请选择证据类型") @Size(max = 40, message = "证据类型无效") public String evidenceType;
+        @Size(max = 30, message = "证据来源无效") public String source;
+        @Size(max = 200, message = "文件名不能超过200字") public String fileName;
+        @NotBlank(message = "请填写证据说明") @Size(max = 1000, message = "证据说明不能超过1000字") public String note;
+    }
+
+    public static class AssessmentRequest extends Versioned {
+        @NotBlank(message = "请选择判定等级") @Size(max = 10, message = "判定等级无效") public String grade;
+        @NotBlank(message = "请选择处置方式") @Size(max = 20, message = "处置方式无效") public String disposalType;
+        @Size(max = 1000, message = "判定说明不能超过1000字") public String note;
     }
 
     public static class Followup extends Versioned {

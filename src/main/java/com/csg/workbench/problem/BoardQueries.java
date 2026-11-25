@@ -15,7 +15,10 @@ public class BoardQueries {
         StringBuilder sql = new StringBuilder();
         if (page) {
             sql.append("SELECT p.id, p.display_number AS displayNumber, p.title, p.device, p.state, p.owner, ");
-            sql.append("p.category, p.kind, p.version AS version, p.updated_at AS updatedAt, ");
+            sql.append("p.category, p.kind, p.channel, p.suspend_reason AS suspendReason, p.grade, ");
+            sql.append("p.disposal_type AS disposalType, p.compromise_flag AS compromiseFlag, ");
+            sql.append("p.escalation_level AS escalationLevel, p.sla_due_at AS slaDueAt, ");
+            sql.append("p.version AS version, p.updated_at AS updatedAt, ");
             sql.append("(SELECT COUNT(*) FROM field_order fo WHERE fo.problem_id = p.id ");
             sql.append("AND fo.state IN ('linked', 'in_progress')) AS activeFieldOrders, ");
             sql.append("(SELECT f.next_step FROM followup f WHERE f.problem_id = p.id AND f.state = 'open' ");
