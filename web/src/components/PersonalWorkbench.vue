@@ -75,7 +75,7 @@
         <div v-if="device" class="personal-box">
           <strong>当前故障摘要</strong>
           <p>{{ device.fault || '暂无故障摘要' }}</p>
-          <small>{{ device.observedAt || '时间未知' }}</small>
+          <small>{{ dateLabel(device.observedAt) }}</small>
         </div>
 
         <h3>历史问题单</h3>
@@ -332,7 +332,7 @@ import FieldOrders from './FieldOrders.vue'
 import SopEvidencePanel from './SopEvidencePanel.vue'
 import WorkflowExtras from './WorkflowExtras.vue'
 import { findProblems, lookupDevice } from '../api/workbench'
-import { channelLabel, displayStatus, disposalLabel, escalationLabel, isUnowned, kindLabel, orderNumber, slaPresentation, suspendLabel } from '../status'
+import { channelLabel, dateLabel, displayStatus, disposalLabel, escalationLabel, isUnowned, kindLabel, orderNumber, slaPresentation, suspendLabel } from '../status'
 
 const props = defineProps({
   problem: { type: Object, required: true },
@@ -451,10 +451,6 @@ watch(() => [props.problem.id, props.problem.device], () => {
   dispatchMode.value = false
   loadRelated()
 }, { immediate: true })
-
-function dateLabel(value) {
-  return value ? String(value).replace('T', ' ').replace(/\.\d+/, '').slice(0, 16) : '时间未知'
-}
 
 function ownerName(value) {
   return !value || value === 'early' ? '无主' : value

@@ -82,6 +82,14 @@
         <template v-else>
           <div class="table-wrap">
             <table class="pool-table">
+              <colgroup>
+                <col class="col-order" />
+                <col class="col-channel" />
+                <col class="col-title" />
+                <col class="col-sla" />
+                <col class="col-status" />
+                <col class="col-owner" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>单号</th>
@@ -361,6 +369,10 @@
 
         <div class="schedule-wrap">
           <table class="schedule-table">
+            <colgroup>
+              <col class="col-shift" />
+              <col v-for="day in weekDays" :key="'col-' + day" />
+            </colgroup>
             <thead>
               <tr>
                 <th>班次</th>
@@ -758,14 +770,14 @@ const shiftRows = computed(() => {
 
 .mid-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(290px, 0.95fr);
+  grid-template-columns: minmax(0, 1.75fr) minmax(275px, 0.9fr);
   gap: 14px;
   align-items: stretch;
 }
 
 .bottom-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.04fr) minmax(0, 1.28fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -827,14 +839,21 @@ const shiftRows = computed(() => {
 
 .pool-table {
   width: 100%;
-  min-width: 640px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
 }
 
+.pool-table .col-order { width: 76px; }
+.pool-table .col-channel { width: 80px; }
+.pool-table .col-title { width: auto; }
+.pool-table .col-sla { width: 94px; }
+.pool-table .col-status { width: 88px; }
+.pool-table .col-owner { width: 96px; }
+
 .pool-table th {
-  padding: 9px 10px;
+  padding: 8px 6px;
   border-bottom: 1px solid var(--line);
   background: #f8fafc;
   color: #64748b;
@@ -844,10 +863,20 @@ const shiftRows = computed(() => {
 }
 
 .pool-table td {
-  padding: 9px 10px;
+  padding: 8px 6px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
   font-size: 12px;
+}
+
+.pool-table th:first-child,
+.pool-table td:first-child {
+  padding-left: 10px;
+}
+
+.pool-table th:last-child,
+.pool-table td:last-child {
+  padding-right: 10px;
 }
 
 .pool-table tbody tr:last-child td {
@@ -871,12 +900,16 @@ const shiftRows = computed(() => {
 }
 
 .order-btn {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--pine);
   font-size: 12px;
   font-weight: 700;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -887,24 +920,29 @@ const shiftRows = computed(() => {
 .channel-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 6px;
   border-radius: 5px;
   background: var(--pine-soft);
   color: var(--pine);
   font-size: 11px;
   font-weight: 500;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .title-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  width: 100%;
   min-width: 0;
-  max-width: 220px;
+  overflow: hidden;
 }
 
 .title-btn {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -938,13 +976,17 @@ const shiftRows = computed(() => {
 .sla-text {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
   color: #64748b;
   font-size: 12px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sla-text i {
+  flex: none;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -958,14 +1000,17 @@ const shiftRows = computed(() => {
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 6px;
   border-radius: 5px;
   font-size: 11px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.status-pill i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.status-pill i { flex: none; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 .status-pill.processing { background: #e6f7f5; color: #0f766e; }
 .status-pill.waiting { background: #fef3c7; color: #b45309; }
 .status-pill.dispatch { background: #eef2ff; color: #4338ca; }
@@ -980,7 +1025,9 @@ const shiftRows = computed(() => {
 .owner-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
 }
 
@@ -1001,8 +1048,11 @@ const shiftRows = computed(() => {
 .avatar-dot.pink, .agent-avatar.pink { background: #f8eaf0; color: #a96787; }
 
 .owner-name {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ink);
   font-size: 12px;
+  text-overflow: ellipsis;
 }
 
 .unowned-label {
@@ -1299,22 +1349,28 @@ const shiftRows = computed(() => {
 
 .schedule-table {
   width: 100%;
-  min-width: 320px;
+  table-layout: fixed;
   border-collapse: collapse;
   text-align: center;
 }
 
+.schedule-table .col-shift {
+  width: 72px;
+}
+
 .schedule-table th,
 .schedule-table td {
-  padding: 8px 4px;
+  padding: 6px 2px;
   border-bottom: 1px solid #f1f5f9;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .schedule-table thead th {
   background: #f8fafc;
   color: #64748b;
+  font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .schedule-table tbody tr:last-child th,
@@ -1322,9 +1378,9 @@ const shiftRows = computed(() => {
   border-bottom: 0;
 }
 
-.shift-col {
+.schedule-table tbody th.shift-col {
   text-align: left;
-  padding-left: 8px;
+  padding: 6px 4px 6px 6px;
   white-space: nowrap;
 }
 
@@ -1342,10 +1398,15 @@ const shiftRows = computed(() => {
 
 .shift-chip {
   display: inline-block;
-  padding: 2px 5px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 4px;
   border-radius: 4px;
   font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .shift-chip.early {

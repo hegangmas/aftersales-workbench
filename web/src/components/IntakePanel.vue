@@ -12,7 +12,7 @@
         <h3>{{ device.device }} · {{ device.model || '模拟设备' }}</h3>
         <p>{{ device.fault }}</p>
         <p class="muted">{{ device.customerName }} · {{ device.siteAddress }}</p>
-        <p class="muted">{{ device.onlineStatus }} · {{ device.warrantyStatus }} · {{ device.source }} · {{ device.observedAt }}</p>
+        <p class="muted">{{ device.onlineStatus }} · {{ device.warrantyStatus }} · {{ device.source }} · {{ dateLabel(device.observedAt) }}</p>
       </section>
       <section v-if="openOrders.length" class="dup-alert" role="status">
         <strong>发现 {{ openOrders.length }} 条同桩未闭环工单（建议优先进入原单续办，避免重复建单）</strong>
@@ -70,7 +70,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { displayStatus, orderNumber } from '../status'
+import { dateLabel, displayStatus, orderNumber } from '../status'
 
 const props = defineProps({
   query: { type: String, default: '' },

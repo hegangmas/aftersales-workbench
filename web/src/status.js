@@ -180,6 +180,10 @@ export function updatedPresentation(value) {
   return { text: stamp.slice(5, 16), year: stamp.slice(0, 4) + ' 年' }
 }
 
+export function dateLabel(value) {
+  return value ? String(value).replace('T', ' ').replace(/\.\d+/, '').slice(0, 16) : '时间未知'
+}
+
 export function orderNumber(item) {
   if (!item) return ''
   return item.displayNumber ? 'AS-' + item.displayNumber : item.id
