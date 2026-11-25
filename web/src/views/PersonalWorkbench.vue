@@ -327,10 +327,10 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import FieldDispatchPanel from './FieldDispatchPanel.vue'
-import FieldOrders from './FieldOrders.vue'
-import SopEvidencePanel from './SopEvidencePanel.vue'
-import WorkflowExtras from './WorkflowExtras.vue'
+import FieldDispatchPanel from '../components/FieldDispatchPanel.vue'
+import FieldOrders from '../components/FieldOrders.vue'
+import SopEvidencePanel from '../components/SopEvidencePanel.vue'
+import WorkflowExtras from '../components/WorkflowExtras.vue'
 import { findProblems, lookupDevice } from '../api/workbench'
 import { channelLabel, dateLabel, displayStatus, disposalLabel, escalationLabel, isUnowned, kindLabel, orderNumber, slaPresentation, suspendLabel } from '../status'
 

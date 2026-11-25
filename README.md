@@ -29,12 +29,15 @@ V6 只新增总表索引 `problem_board_updated`、账号列 `credentials_change
 
 V7 只新增查桩历史索引 `problem_device_updated`（`problem(device, updated_at)`）和到期回访索引 `followup_due_queue`（`followup(state, due_at, id)`），不改动表结构与已有数据。回滚到不含 V7 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`，不要清库。
 
+V8（`V8__v11_core_workflow.sql`）为 `problem` 新增可空或带默认值字段（故障时点 `fault_occurred_at`、挂起原因 `suspend_reason`、A/B/C 等级 `grade`、处置方式 `disposal_type`、妥协/升级标记 `compromise_flag` / `escalation_level` / `escalation_reason`、SLA 截止时间 `sla_due_at`、自动审批说明 `auto_approval_note`）并新增证据元数据表 `evidence_item`，不改旧表结构与历史数据。回滚到不含 V8 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`，不要清库。
+
 ## 找代码
 
 - `device` 提供设备和故障查询，当前使用模拟数据。
 - `problem` 负责问题受理、详情、跟进和团队总表。`GET /api/problems/board` 按状态、负责人、故障分类和类型筛选，并按短号、桩编码或标题搜索。排序固定为更新时间倒序、主键倒序。响应另附只读 `summary`：`total` 与 `states` 各桶（待认领、处理中、待排查、待回访、待派单、现场处理中、待验证、已结案、已答复、已转出）之和相等，并与不带其他筛选的 `bucket` 查询总数一致；`due`、`dueMine`、`mine` 分别与到期回访团队、到期回访我的、我的待办的 `total` 相同。`bucket` 只改变当前列表，不改统计口径。无主且未结案计入待认领，不重复计入流程状态。待派单与现场处理中都对应 `field`，以是否还有未结束的现场单区分。问题创建与首条活动记录在同一事务中保存。页面按松果青绿视觉规范呈现登录、总表、详情、查桩建单、账号与改密；待认领数和到期回访数取自上述统计。
 - `account` 负责账号、本人改密和管理员重置。重置和改密写入 `security_audit`，响应和日志不包含口令或哈希。
 - `web/src/api/workbench.js` 集中放置浏览器请求。
+- 页面级组件位于 `web/src/views/`（含调度大屏 `DispatchDashboard.vue`、知识库与 SOP `KnowledgeSopView.vue`、三栏个人工作台 `PersonalWorkbench.vue`、问题单总表 `ProblemBoard.vue`、查桩与建单 `IntakePanel.vue`、账号管理 `AccountPanel.vue` 与改密 `PasswordPanel.vue`），复用组件位于 `web/src/components/`（含三栏派单至智享乐装 `FieldDispatchPanel.vue`、SOP 与证据缩略卡 `SopEvidencePanel.vue`、挂起回池/快通道/SLA 升级/A-B-C 判定 `WorkflowExtras.vue` 等）。个人工作台含 6 节点进度条、证据缩略卡、模拟维修/录音信息、挂起回池、快通道、SLA 升级、A/B/C 判定与三栏派单至智享乐装；外部设备档案、维修履历、400 录音摘要与自动校验留痕均为明确标注的模拟数据展示，尚未接入真实生产接口。
 - `src/main/resources/db/migration` 存放数据库迁移。当前从 Python 试用版表结构建立独立测试库。已有数据库的接入需核对迁移基线。
 
 首批审核范围是接口、包结构和写库事务。项目范围授权、上游真实接口与通话属于后续批次。
