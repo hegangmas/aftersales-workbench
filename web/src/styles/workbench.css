@@ -651,3 +651,42 @@ form.settled .secret:has(input:user-invalid) + .error-msg { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
 }
+
+/* 个人工作台沿用既有色彩、卡片和操作控件。 */
+.sidebar-toggle { align-self: flex-end; margin: 12px 3px 0; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #697b8e; font-size: 20px; line-height: 1; }
+.personal-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.personal-head h1 { margin: 4px 0; font-size: 20px; color: var(--heading); }
+.personal-head p { margin: 0; }
+.personal .link { padding: 0; border: 0; background: none; color: #078478; text-align: left; }
+.case-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+.case-bar strong { color: var(--heading); font-size: 16px; }
+.pending { color: #a86c08; background: #fff5dd; padding: 4px 8px; border-radius: 5px; }
+.personal-grid { display: grid; grid-template-columns: minmax(200px, .9fr) minmax(320px, 1.6fr) minmax(220px, 1fr); gap: 14px; align-items: stretch; }
+.personal-grid .panel { min-width: 0; }
+.personal-grid h2 { margin-top: 0; }
+.personal-grid h3 { margin: 22px 0 10px; font-size: 14px; }
+.personal-facts { display: grid; grid-template-columns: auto 1fr; gap: 12px; margin: 18px 0; }
+.personal-facts dt, .personal-box small { color: #8491a0; }
+.personal-facts dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.personal-box { background: #f5f7fa; border: 1px solid #e8edf2; border-radius: 8px; padding: 12px; }
+.personal-box p { margin: 7px 0 0; }
+.personal-data { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.personal-history { list-style: none; padding: 0; }
+.personal-history li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.personal-history span { color: #8491a0; white-space: nowrap; }
+.personal-timeline { max-height: 220px; overflow: auto; }
+.personal-note { margin-top: 18px; }
+.personal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.personal-more { padding: 12px 0; }
+.personal-more a { color: #078478; }
+#problem-actions { scroll-margin-top: 20px; }
+@media (min-width: 960px) {
+ .personal-mode .sidebar { width: 68px; padding-left: 8px; padding-right: 8px; }
+ .personal-mode .sidebar-logo,.personal-mode .brand-copy,.personal-mode .group-title,.personal-mode .nav-link span,.personal-mode .nav-link b,.personal-mode .profile-copy,.personal-mode .exit,.personal-mode .profile .avatar { display: none; }
+ .personal-mode .brand { padding: 0; }
+ .personal-mode .nav-link { justify-content: center; padding: 8px; }
+ .personal-mode .sidebar-toggle { align-self: center; }
+ .personal-mode .workspace { margin-left: 68px; max-width: none; }
+}
+@media (max-width: 1100px) { .personal-grid { grid-template-columns: 1fr 1fr; } .personal-grid > :last-child { grid-column: 1 / -1; } }
+@media (max-width: 700px) { .personal-grid { grid-template-columns: 1fr; } .personal-grid > :last-child { grid-column: auto; } .personal-head { align-items: flex-start; } .personal-data { grid-template-columns: 1fr; } }

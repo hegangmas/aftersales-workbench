@@ -1,7 +1,7 @@
 <template>
   <div v-if="!authReady" class="booting"></div>
   <LoginScreen v-else-if="!account" ref="loginPanel" v-model:username="username" v-model:password="password" v-model:remember="rememberAccount" :busy="busy" :error="error" @submit="signIn" />
-  <div v-else class="shell">
+  <div v-else class="shell" :class="{ 'personal-mode': view === 'detail' && !sidebarExpanded }">
     <header class="mobile-bar">
       <button class="menu-button" type="button" aria-label="打开菜单" :aria-expanded="navOpen" aria-controls="workbench-nav" @click="navOpen = true">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
@@ -19,17 +19,18 @@
           <div class="brand-sub"><span class="test-tag">模拟数据</span></div>
         </div>
       </div>
+      <button v-if="wide && view === 'detail'" class="sidebar-toggle" type="button" :aria-expanded="sidebarExpanded" :aria-label="sidebarExpanded ? '收起导航' : '展开导航'" @click="sidebarExpanded = !sidebarExpanded">{{ sidebarExpanded ? '‹' : '›' }}</button>
       <nav class="navs">
         <p class="group-title">工作台</p>
-        <button type="button" class="nav-link" :aria-current="currentNav('board') ? 'page' : undefined" @click="showNav('board')"><NavIcon name="board" /><span>问题单总表</span></button>
-        <button type="button" class="nav-link" :aria-current="currentNav('pool') ? 'page' : undefined" @click="showNav('pool')"><NavIcon name="pool" /><span>待认领池</span><b v-if="unclaimedCount !== null" class="count-pill">{{ unclaimedCount }}</b></button>
-        <button type="button" class="nav-link" :aria-current="currentNav('mine') ? 'page' : undefined" @click="showNav('mine')"><NavIcon name="mine" /><span>我的待办</span></button>
-        <button type="button" class="nav-link" :aria-current="currentNav('due') ? 'page' : undefined" @click="showNav('due')"><NavIcon name="due" /><span>到期回访</span><span v-if="dueCount !== null" class="due-pill"><i></i>{{ dueCount }}</span></button>
+        <button type="button" class="nav-link" aria-label="问题单总表" title="问题单总表" :aria-current="currentNav('board') ? 'page' : undefined" @click="showNav('board')"><NavIcon name="board" /><span>问题单总表</span></button>
+        <button type="button" class="nav-link" aria-label="待认领池" title="待认领池" :aria-current="currentNav('pool') ? 'page' : undefined" @click="showNav('pool')"><NavIcon name="pool" /><span>待认领池</span><b v-if="unclaimedCount !== null" class="count-pill">{{ unclaimedCount }}</b></button>
+        <button type="button" class="nav-link" aria-label="我的待办" title="我的待办" :aria-current="currentNav('mine') ? 'page' : undefined" @click="showNav('mine')"><NavIcon name="mine" /><span>我的待办</span></button>
+        <button type="button" class="nav-link" aria-label="到期回访" title="到期回访" :aria-current="currentNav('due') ? 'page' : undefined" @click="showNav('due')"><NavIcon name="due" /><span>到期回访</span><span v-if="dueCount !== null" class="due-pill"><i></i>{{ dueCount }}</span></button>
         <p class="group-title next">受理与查询</p>
-        <button type="button" class="nav-link" :aria-current="currentNav('intake') ? 'page' : undefined" @click="showNav('intake')"><NavIcon name="intake" /><span>查桩与建单</span></button>
+        <button type="button" class="nav-link" aria-label="查桩与建单" title="查桩与建单" :aria-current="currentNav('intake') ? 'page' : undefined" @click="showNav('intake')"><NavIcon name="intake" /><span>查桩与建单</span></button>
         <p class="group-title next">系统管理</p>
-        <button v-if="account.role === 'admin'" type="button" class="nav-link" :aria-current="currentNav('accounts') ? 'page' : undefined" @click="showNav('accounts')"><NavIcon name="accounts" /><span>坐席与账号</span></button>
-        <button type="button" class="nav-link" :aria-current="currentNav('security') ? 'page' : undefined" @click="showNav('security')"><NavIcon name="security" /><span>安全与改密</span></button>
+        <button v-if="account.role === 'admin'" type="button" class="nav-link" aria-label="坐席与账号" title="坐席与账号" :aria-current="currentNav('accounts') ? 'page' : undefined" @click="showNav('accounts')"><NavIcon name="accounts" /><span>坐席与账号</span></button>
+        <button type="button" class="nav-link" aria-label="安全与改密" title="安全与改密" :aria-current="currentNav('security') ? 'page' : undefined" @click="showNav('security')"><NavIcon name="security" /><span>安全与改密</span></button>
       </nav>
       <div class="profile">
         <span class="avatar" aria-hidden="true">{{ initial(account.username) }}</span>
@@ -94,10 +95,13 @@
       <IntakePanel v-else-if="view === 'intake'" v-model:query="query" v-model:title="title" v-model:description="description" :device="device" :orders="deviceOrders" :busy="busy" @search="search" @create="create" @open="openProblem" />
       <AccountPanel v-else-if="view === 'accounts' && account.role === 'admin'" :accounts="accounts" :busy="busy" :notice="accountNotice" :create-account="addAccount" :reset-password="resetAccountPassword" @toggle="toggleAccount" />
       <PasswordPanel v-else-if="view === 'security'" :busy="busy" :notice="passwordNotice" :change-password="changeOwnPassword" />
-      <ProblemDetail v-else-if="view === 'detail' && problem" :problem="problem" :busy="busy" :can-process="canProcess" :can-handoff="canHandoff" :handling-denied="handlingDenied" :next-action="nextAction" :refresh-note="refreshNote"
+      <template v-else-if="view === 'detail' && problem">
+      <PersonalWorkbench :problem="problem" :busy="busy" :can-process="canProcess" :handling-denied="handlingDenied" :field-in-progress="fieldInProgress" v-model:note="note" @back="backToList" @intake="showNav('intake')" @mine="showNav('mine')" @open="openProblem" @claim="claim" @save-note="saveNote" />
+      <div id="problem-actions"><ProblemDetail :problem="problem" :busy="busy" :can-process="canProcess" :can-handoff="canHandoff" :handling-denied="handlingDenied" :next-action="nextAction" :refresh-note="refreshNote"
         v-model:note="note" v-model:owner="owner" v-model:due-at="dueAt" v-model:next-step="nextStep" v-model:outcome="outcome" v-model:result="result" :show-callback="showCallback" v-model:contacted-at="contactedAt" v-model:evidence-source="evidenceSource" v-model:evidence="evidence"
         v-model:withdraw-reason="withdrawReason" v-model:handoff-target="handoffTarget" v-model:handoff-reason="handoffReason" v-model:field-number="fieldNumber" v-model:field-receipt="fieldReceipt" v-model:field-state="fieldState"
-        :assignees="assignees" :evidence-labels="evidenceLabels" :field-in-progress="fieldInProgress" @back="backToList" @claim="claim" @save-note="saveNote" @save-schedule="saveSchedule" @begin-callback="beginCallback" @save-outcome="saveOutcome" @handoff="handoff" @withdraw="withdrawDispatch" @link="saveFieldLink" @field-result="saveFieldResult" />
+        :assignees="assignees" :evidence-labels="evidenceLabels" :field-in-progress="fieldInProgress" @back="backToList" @claim="claim" @save-note="saveNote" @save-schedule="saveSchedule" @begin-callback="beginCallback" @save-outcome="saveOutcome" @handoff="handoff" @withdraw="withdrawDispatch" @link="saveFieldLink" @field-result="saveFieldResult" /></div>
+      </template>
     </main>
   </div>
 </template>
@@ -110,6 +114,7 @@ import IntakePanel from './components/IntakePanel.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import NavIcon from './components/NavIcon.vue'
 import PasswordPanel from './components/PasswordPanel.vue'
+import PersonalWorkbench from './components/PersonalWorkbench.vue'
 import ProblemBoard from './components/ProblemBoard.vue'
 import ProblemDetail from './components/ProblemDetail.vue'
 import QueueList from './components/QueueList.vue'
@@ -169,6 +174,7 @@ const view = ref('board')
 const returnView = ref('board')
 const detailFocus = ref('')
 const navOpen = ref(false)
+const sidebarExpanded = ref(false)
 const wide = ref(true)
 const dueScope = ref('team')
 const dueItems = ref([])
