@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/problems")
 public class ProblemController {
     private final ProblemService problems;
+    private final ProblemV11Service v11;
 
-    public ProblemController(ProblemService problems) {
+    public ProblemController(ProblemService problems, ProblemV11Service v11) {
         this.problems = problems;
+        this.v11 = v11;
     }
 
     /**
@@ -44,7 +46,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void followup(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                          @Valid @RequestBody Followup request) {
-        problems.recordFollowup(id, request.note, request.expectedVersion, requestId);
+        v11.addFollowupV11(id, request.note, request.expectedVersion, requestId);
     }
 
     @GetMapping
@@ -121,7 +123,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void handoff(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                         @Valid @RequestBody Handoff request) {
-        problems.handoff(id, request.target, request.reason, request.expectedVersion, requestId);
+        v11.handoffV11(id, request.target, request.reason, request.expectedVersion, requestId);
     }
 
     /**
@@ -168,7 +170,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void suspend(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                         @Valid @RequestBody SuspendRequest request) {
-        problems.suspend(id, request.reason, Boolean.TRUE.equals(request.returnToPool),
+        v11.suspendV11(id, request.reason, Boolean.TRUE.equals(request.returnToPool),
             request.nextStep, request.dueAt, request.expectedVersion, requestId);
     }
 
@@ -176,7 +178,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void quickClose(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                            @Valid @RequestBody QuickCloseRequest request) {
-        problems.quickClose(id, request.note, request.evidenceSource, request.evidence,
+        v11.quickCloseV11(id, request.note, request.evidenceSource, request.evidence,
             request.expectedVersion, requestId);
     }
 
@@ -184,7 +186,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void escalate(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                          @Valid @RequestBody EscalateRequest request) {
-        problems.escalate(id, request.level, request.reason, Boolean.TRUE.equals(request.compromise),
+        v11.escalateV11(id, request.level, request.reason, Boolean.TRUE.equals(request.compromise),
             request.expectedVersion, requestId);
     }
 
@@ -192,7 +194,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void addEvidence(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                             @Valid @RequestBody EvidenceRequest request) {
-        problems.addEvidence(id, request.evidenceType, request.source, request.fileName,
+        v11.addEvidenceV11(id, request.evidenceType, request.source, request.fileName,
             request.note, request.expectedVersion, requestId);
     }
 
@@ -200,7 +202,7 @@ public class ProblemController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assess(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
                        @Valid @RequestBody AssessmentRequest request) {
-        problems.assess(id, request.grade, request.disposalType, request.note,
+        v11.assessV11(id, request.grade, request.disposalType, request.note,
             request.expectedVersion, requestId);
     }
 

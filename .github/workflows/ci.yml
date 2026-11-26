@@ -113,3 +113,18 @@ jobs:
             echo "::error::UI 红线扫描异常退出（exit=$status），请检查目标路径。"
             exit "$status"
           fi
+
+      - name: Verify Knowledge read-only physical isolation
+        run: |
+          set +e
+          grep -rnE 'listAdminSops|saveAdminSop|publishAdminSop|/api/admin/|gradeThresholds|autoApprovalRules' \
+            web/src/views/knowledge/
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::知识库只读视图禁止引用管理端 SOP 写接口或审批阈值字段。"
+            exit 1
+          elif [ "$status" -gt 1 ]; then
+            echo "::error::知识库隔离扫描异常退出（exit=$status），请检查目标路径。"
+            exit "$status"
+          fi

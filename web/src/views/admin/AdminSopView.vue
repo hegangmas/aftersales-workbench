@@ -1,35 +1,27 @@
 <template>
-  <section class="sop-workspace" :aria-label="readOnly ? '知识库' : 'SOP 与规则管理'">
-    <!-- 顶部操作条（只读端无写端色带；管理写端加 3px 琥珀色内顶边） -->
-    <header class="card sop-topbar" :class="{ 'card--write-end': !readOnly }">
+  <section class="sop-workspace" aria-label="SOP 与规则管理">
+    <!-- 顶部操作条（管理写端加 3px 琥珀色内顶边） -->
+    <header class="card sop-topbar card--write-end">
       <div class="topbar-left">
         <nav class="sop-breadcrumb" aria-label="当前位置">
-          <span>{{ readOnly ? '知识库' : '管理' }}</span>
-          <template v-if="!readOnly">
-            <span class="crumb-sep" aria-hidden="true">/</span>
-            <span>SOP 与规则</span>
-          </template>
+          <span>管理</span>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <span>SOP 与规则</span>
           <span class="crumb-sep" aria-hidden="true">/</span>
           <strong class="crumb-current">{{ activeGroup ? activeGroup.category : '全部故障' }}</strong>
         </nav>
 
-        <span v-if="readOnly" class="badge badge--lock">
-          只读发布版 · 仅展示生效 SOP
+        <span class="badge badge--warning">唯一写入端</span>
+        <span
+          v-if="displayedEntry"
+          class="badge badge--dot"
+          :class="statusBadgeClass(displayedEntry.status)"
+        >
+          <span class="mono">{{ displayedEntry.version }}</span> · {{ statusLabel(displayedEntry.status) }}
         </span>
-        <template v-else>
-          <span class="badge badge--warning">唯一写入端</span>
-          <span
-            v-if="displayedEntry"
-            class="badge badge--dot"
-            :class="statusBadgeClass(displayedEntry.status)"
-          >
-            <span class="mono">{{ displayedEntry.version }}</span> · {{ statusLabel(displayedEntry.status) }}
-          </span>
-        </template>
       </div>
 
-      <!-- 管理侧操作按钮（readOnly === true 时绝对不渲染） -->
-      <div v-if="!readOnly" class="topbar-actions">
+      <div class="topbar-actions">
         <button
           type="button"
           class="btn btn--secondary"
@@ -58,9 +50,9 @@
       </div>
     </header>
 
-    <!-- 新建故障内联面板（仅管理侧） -->
+    <!-- 新建故障内联面板 -->
     <form
-      v-if="!readOnly && showNewFaultForm"
+      v-if="showNewFaultForm"
       class="card new-fault-panel"
       @submit.prevent="submitNewFault(false)"
     >
@@ -298,7 +290,7 @@
     <!-- 三栏主体结构 -->
     <div class="sop-columns">
       <SopCategoryTree
-        :read-only="readOnly"
+        :read-only="false"
         :loading="loading"
         :category-groups="categoryGroups"
         :active-category-name="activeCategoryName"
@@ -306,7 +298,7 @@
       />
 
       <SopStepsPanel
-        :read-only="readOnly"
+        :read-only="false"
         :busy="busy"
         :active-group="activeGroup"
         :displayed-entry="displayedEntry"
@@ -325,7 +317,7 @@
       />
 
       <SopRulesSidebar
-        :read-only="readOnly"
+        :read-only="false"
         :busy="busy"
         :active-group="activeGroup"
         :displayed-entry="displayedEntry"
@@ -348,21 +340,16 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   listAdminSops,
-  listKnowledgeSops,
   publishAdminSop,
   saveAdminSop
-} from '../api/workbench'
-import SopCategoryTree from '../components/sop/SopCategoryTree.vue'
-import SopRulesSidebar from '../components/sop/SopRulesSidebar.vue'
-import SopStepsPanel from '../components/sop/SopStepsPanel.vue'
-import { EVIDENCE_TYPE_LABELS } from '../status'
-
-const props = defineProps({
-  readOnly: { type: Boolean, default: true }
-})
+} from '../../api/workbench'
+import SopCategoryTree from '../../components/sop/SopCategoryTree.vue'
+import SopRulesSidebar from '../../components/sop/SopRulesSidebar.vue'
+import SopStepsPanel from '../../components/sop/SopStepsPanel.vue'
+import { EVIDENCE_TYPE_LABELS } from '../../status'
 
 const CATEGORY_ORDER = ['无法充电', '充电中断', '设备离线', '计费异常', '安装问题', '其他']
 
@@ -370,130 +357,6 @@ const evidenceOptions = Object.keys(EVIDENCE_TYPE_LABELS).map(value => ({
   value,
   label: EVIDENCE_TYPE_LABELS[value]
 }))
-
-// 内置只读回退样例：严格剥离 A/B/C 阈值数字与换装自动审批条件
-const FALLBACK_KNOWLEDGE_SOPS = [
-  {
-    id: 'fallback-no-charge',
-    category: '无法充电',
-    title: '无法充电 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '时序+可视混合类',
-    customerSteps: [
-      '确认车辆与枪头连接牢固并无异物',
-      '确认桩体通电、空开合闸与指示灯状态',
-      '引导客户断电1分钟后重启复测'
-    ],
-    onsiteSteps: [
-      '现场测量主回路电压与PE接地',
-      '读取设备故障码与实时报文',
-      '执行换件或换桩判定并留存旧件'
-    ],
-    requiredEvidence: ['photo', 'video', 'platform_data'],
-    gradeHint: 'A级需平台报文/日志佐证；B级需现场采集与对照；C级仅现象描述禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  },
-  {
-    id: 'fallback-interrupt',
-    category: '充电中断',
-    title: '充电中断 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '时序类（故障时点+充电记录）',
-    customerSteps: [
-      '确认中断精确时间（到分钟）及车端提示',
-      '观察桩体告警灯并重新插拔枪头',
-      '条件允许时换车或同站另一把枪对照测试'
-    ],
-    onsiteSteps: [
-      '调取平台充电会话停止原因与电流曲线',
-      '现场检测枪温、接触器与接地电阻',
-      '单变量替换测试并留痕'
-    ],
-    requiredEvidence: ['timestamp_log', 'platform_data', 'swap_test'],
-    gradeHint: 'A级需平台停止原因+日志；B级需同站对照或替换测试；C级禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  },
-  {
-    id: 'fallback-offline',
-    category: '设备离线',
-    title: '设备离线 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '时序/通信类（照片无效）',
-    customerSteps: [
-      '确认桩体电源正常与网络指示灯状态',
-      '记录断网大致时间并观察周边4G信号',
-      '引导断电1分钟后上电观察重连'
-    ],
-    onsiteSteps: [
-      '核查SIM卡槽接触与天线连接',
-      '核对SIM到期时间与程序版本',
-      '采集本地通信日志并与同站其他桩对照'
-    ],
-    requiredEvidence: ['timestamp_log', 'site_compare', 'platform_data'],
-    gradeHint: 'A级需通信日志/SIM状态佐证；B级需现场信号与卡槽核查；C级禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  },
-  {
-    id: 'fallback-billing',
-    category: '计费异常',
-    title: '计费异常 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '平台账单+电量对照',
-    customerSteps: [
-      '核对充电订单号、起止时间与账单金额',
-      '确认车端表显充电量与结算电量差异',
-      '留存异常订单截图或订单编号'
-    ],
-    onsiteSteps: [
-      '核查电表计量模块脉冲与CT接线',
-      '对比平台原始报文电量与本地电表读数',
-      '确认计量误差是否超出国标范围'
-    ],
-    requiredEvidence: ['platform_data', 'timestamp_log'],
-    gradeHint: 'A级需电表与平台报文差异佐证；B级需现场校准记录；C级禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  },
-  {
-    id: 'fallback-install',
-    category: '安装问题',
-    title: '安装问题 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '可视类（现场照片为主）',
-    customerSteps: [
-      '确认现场无漏电冒烟等安全风险',
-      '请客户拍摄安装位置、配电箱与铭牌照片',
-      '核对原始安装验收单与施工服务商'
-    ],
-    onsiteSteps: [
-      '现场核验线径、空开规格与接地阻值',
-      '留存整改前后对比照片',
-      '关联原安装服务商责任归属'
-    ],
-    requiredEvidence: ['photo', 'video'],
-    gradeHint: '安装施工问题优先走安装整改，非设备本身故障禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  },
-  {
-    id: 'fallback-other',
-    category: '其他',
-    title: '其他异常 · SOP步骤',
-    version: 'V2.3',
-    evidenceMode: '混合类',
-    customerSteps: [
-      '确认现象发生时间与具体表现',
-      '收集清晰照片或短视频记录现场情况',
-      '排查基础供电与环境因素'
-    ],
-    onsiteSteps: [
-      '现场复现故障现象并采集日志',
-      '按实际症状归入对应故障大类',
-      '形成书面排查结论'
-    ],
-    requiredEvidence: ['photo', 'timestamp_log'],
-    gradeHint: '需先归类补充证据后再行判定，C级禁止换装',
-    updatedAt: '2026-11-25 10:00'
-  }
-]
 
 const loading = ref(false)
 const busy = ref(false)
@@ -579,8 +442,7 @@ function normalizeAutoRules(raw) {
   }))
 }
 
-// 只读视图严格清洗字段，绝不保留 gradeThresholds / autoApprovalRules
-function toReadOnlyEntry(row) {
+function toAdminEntry(row) {
   return {
     id: row.id,
     category: String(row.category || '').trim() || '未分类',
@@ -591,13 +453,7 @@ function toReadOnlyEntry(row) {
     onsiteSteps: normalizeSteps(row.onsiteSteps),
     requiredEvidence: normalizeEvidence(row.requiredEvidence),
     gradeHint: String(row.gradeHint || ''),
-    updatedAt: row.updatedAt || ''
-  }
-}
-
-function toAdminEntry(row) {
-  return {
-    ...toReadOnlyEntry(row),
+    updatedAt: row.updatedAt || '',
     status: String(row.status || 'published'),
     gradeThresholds: normalizeThresholds(row.gradeThresholds),
     autoApprovalRules: normalizeAutoRules(row.autoApprovalRules),
@@ -605,10 +461,10 @@ function toAdminEntry(row) {
   }
 }
 
-function groupByCategory(entries, isAdmin) {
+function groupByCategory(entries) {
   const map = new Map()
   entries.forEach(raw => {
-    const entry = isAdmin ? toAdminEntry(raw) : toReadOnlyEntry(raw)
+    const entry = toAdminEntry(raw)
     if (!map.has(entry.category)) {
       map.set(entry.category, [])
     }
@@ -618,7 +474,7 @@ function groupByCategory(entries, isAdmin) {
   const groups = Array.from(map.entries()).map(([category, versions]) => {
     const publishedEntry = versions.find(v => v.status === 'published') || null
     const latestDraft = versions.find(v => v.status === 'draft') || null
-    const defaultEntry = isAdmin ? (publishedEntry || versions[0]) : versions[0]
+    const defaultEntry = publishedEntry || versions[0]
     return {
       category,
       versions,
@@ -648,7 +504,7 @@ const activeGroup = computed(() => {
 const displayedEntry = computed(() => {
   const group = activeGroup.value
   if (!group) return null
-  if (!props.readOnly && selectedVersionId.value != null) {
+  if (selectedVersionId.value != null) {
     const found = group.versions.find(v => v.id === selectedVersionId.value)
     if (found) return found
   }
@@ -656,12 +512,24 @@ const displayedEntry = computed(() => {
 })
 
 const isViewingNonDefaultVersion = computed(() => {
-  if (props.readOnly || !activeGroup.value || !displayedEntry.value) return false
+  if (!activeGroup.value || !displayedEntry.value) return false
   return displayedEntry.value.id !== activeGroup.value.defaultEntry.id
 })
 
+function nextVersionString(ver) {
+  const raw = String(ver || 'V1.0').trim()
+  const match = raw.match(/^(V?)(\d+)\.(\d+)$/i)
+  if (match) {
+    const prefix = match[1] ? match[1].toUpperCase() : 'V'
+    const major = Number(match[2])
+    const minor = Number(match[3]) + 1
+    return `${prefix}${major}.${minor}`
+  }
+  return raw + '.1'
+}
+
 function syncRuleDraftFromEntry(entry) {
-  if (!entry || props.readOnly) {
+  if (!entry) {
     ruleDraft.version = ''
     ruleDraft.gradeThresholds = { A: '', B: '', C: '' }
     ruleDraft.autoApprovalRules = []
@@ -677,22 +545,8 @@ function syncRuleDraftFromEntry(entry) {
 }
 
 watch(displayedEntry, entry => {
-  if (!props.readOnly) {
-    syncRuleDraftFromEntry(entry)
-  }
+  syncRuleDraftFromEntry(entry)
 })
-
-function nextVersionString(ver) {
-  const raw = String(ver || 'V1.0').trim()
-  const match = raw.match(/^(V?)(\d+)\.(\d+)$/i)
-  if (match) {
-    const prefix = match[1] ? match[1].toUpperCase() : 'V'
-    const major = Number(match[2])
-    const minor = Number(match[3]) + 1
-    return `${prefix}${major}.${minor}`
-  }
-  return raw + '.1'
-}
 
 function setNotice(text, tone = 'info') {
   statusNotice.text = text
@@ -704,22 +558,10 @@ async function loadSops(preferredCategory, preferredVersionId) {
   isEditingSop.value = false
   isEditingRules.value = false
   hasPendingRuleChanges.value = false
-  if (props.readOnly) {
-    showNewFaultForm.value = false
-  }
 
   try {
-    if (props.readOnly) {
-      const rows = await listKnowledgeSops()
-      const list = Array.isArray(rows) && rows.length ? rows : FALLBACK_KNOWLEDGE_SOPS
-      if (!Array.isArray(rows) || !rows.length) {
-        setNotice('后端暂无已发布 SOP，当前展示内置只读样例', 'warn')
-      }
-      categoryGroups.value = groupByCategory(list, false)
-    } else {
-      const rows = await listAdminSops()
-      categoryGroups.value = groupByCategory(Array.isArray(rows) ? rows : [], true)
-    }
+    const rows = await listAdminSops()
+    categoryGroups.value = groupByCategory(Array.isArray(rows) ? rows : [])
 
     const targetCategory = preferredCategory || activeCategoryName.value
     const foundGroup = categoryGroups.value.find(g => g.category === targetCategory)
@@ -728,27 +570,19 @@ async function loadSops(preferredCategory, preferredVersionId) {
       : (categoryGroups.value[0] ? categoryGroups.value[0].category : '')
     selectedVersionId.value = preferredVersionId || null
 
-    if (!props.readOnly && displayedEntry.value) {
+    if (displayedEntry.value) {
       syncRuleDraftFromEntry(displayedEntry.value)
     }
   } catch (err) {
-    if (props.readOnly) {
-      categoryGroups.value = groupByCategory(FALLBACK_KNOWLEDGE_SOPS, false)
-      activeCategoryName.value = categoryGroups.value[0] ? categoryGroups.value[0].category : ''
-      selectedVersionId.value = null
-      setNotice('知识库接口暂不可用，已自动切换为内置只读样例', 'warn')
-    } else {
-      setNotice(err && err.message ? err.message : '加载 SOP 与规则列表失败', 'danger')
-    }
+    setNotice(err && err.message ? err.message : '加载 SOP 与规则列表失败', 'danger')
   } finally {
     loading.value = false
   }
 }
 
-watch(() => props.readOnly, () => {
-  statusNotice.text = ''
+onMounted(() => {
   loadSops()
-}, { immediate: true })
+})
 
 function selectCategory(category) {
   isEditingSop.value = false
@@ -757,14 +591,11 @@ function selectCategory(category) {
 }
 
 function selectVersion(id) {
-  if (props.readOnly) return
   isEditingSop.value = false
   selectedVersionId.value = id
 }
 
-// ===== 新建故障（仅管理侧）=====
 function toggleNewFaultForm() {
-  if (props.readOnly) return
   showNewFaultForm.value = !showNewFaultForm.value
   if (showNewFaultForm.value) {
     Object.assign(newFault, createEmptyNewFault())
@@ -792,7 +623,7 @@ function removeNewFaultStep(stage, idx) {
 }
 
 async function submitNewFault(publishNow) {
-  if (props.readOnly || busy.value) return
+  if (busy.value) return
   const category = newFault.category.trim()
   const title = (newFault.title || `${category} · SOP步骤`).trim()
   const version = newFault.version.trim() || 'V1.0'
@@ -842,9 +673,8 @@ async function submitNewFault(publishNow) {
   }
 }
 
-// ===== 中栏：编辑 SOP（仅管理侧）=====
 function enterEditSop() {
-  if (props.readOnly || !displayedEntry.value) return
+  if (!displayedEntry.value) return
   const entry = displayedEntry.value
   sopDraft.title = entry.title
   sopDraft.version = entry.status === 'draft' ? entry.version : nextVersionString(entry.version)
@@ -877,7 +707,7 @@ function removeDraftStep(stage, idx) {
 }
 
 async function saveEditSop(publishNow) {
-  if (props.readOnly || !displayedEntry.value || busy.value) return
+  if (!displayedEntry.value || busy.value) return
   const entry = displayedEntry.value
   const customerSteps = sopDraft.customerSteps.map(s => s.trim()).filter(Boolean).slice(0, 3)
   const onsiteSteps = sopDraft.onsiteSteps.map(s => s.trim()).filter(Boolean)
@@ -930,9 +760,8 @@ async function saveEditSop(publishNow) {
   }
 }
 
-// ===== 右栏：分级阈值与换装自动审批规则（仅管理侧）=====
 function enterEditRules() {
-  if (props.readOnly || !displayedEntry.value) return
+  if (!displayedEntry.value) return
   isEditingRules.value = true
 }
 
@@ -941,13 +770,11 @@ function cancelRuleChanges() {
 }
 
 function toggleAutoRule(rule) {
-  if (props.readOnly) return
   rule.enabled = !rule.enabled
   hasPendingRuleChanges.value = true
 }
 
 function addAutoRule() {
-  if (props.readOnly) return
   const nextIndex = ruleDraft.autoApprovalRules.length + 1
   ruleDraft.autoApprovalRules.push({
     id: `r${Date.now()}`,
@@ -959,13 +786,13 @@ function addAutoRule() {
 }
 
 function removeAutoRule(idx) {
-  if (props.readOnly || ruleDraft.autoApprovalRules.length <= 1) return
+  if (ruleDraft.autoApprovalRules.length <= 1) return
   ruleDraft.autoApprovalRules.splice(idx, 1)
   hasPendingRuleChanges.value = true
 }
 
 async function saveRuleChanges(publishNow) {
-  if (props.readOnly || !displayedEntry.value || busy.value) return
+  if (!displayedEntry.value || busy.value) return
   const entry = displayedEntry.value
   const version = ruleDraft.version.trim() || nextVersionString(entry.version)
   const cleanRules = ruleDraft.autoApprovalRules
@@ -1015,9 +842,8 @@ async function saveRuleChanges(publishNow) {
   }
 }
 
-// ===== 顶部评审 / 发布 & 版本列表发布 =====
 async function handleReview() {
-  if (props.readOnly || !activeGroup.value || !displayedEntry.value || busy.value) return
+  if (!activeGroup.value || !displayedEntry.value || busy.value) return
   if (isEditingSop.value) {
     await saveEditSop(false)
     return
@@ -1041,7 +867,7 @@ async function handleReview() {
 }
 
 async function handleTopbarPublish() {
-  if (props.readOnly || !activeGroup.value || !displayedEntry.value || busy.value) return
+  if (!activeGroup.value || !displayedEntry.value || busy.value) return
   if (isEditingSop.value) {
     await saveEditSop(true)
     return
@@ -1062,7 +888,7 @@ async function handleTopbarPublish() {
 }
 
 async function publishVersion(ver) {
-  if (props.readOnly || !ver || !ver.id || busy.value) return
+  if (!ver || !ver.id || busy.value) return
   busy.value = true
   try {
     await publishAdminSop(ver.id)
@@ -1097,17 +923,6 @@ function statusLabel(status) {
   line-height: var(--lh-body-sm);
 }
 
-.badge--lock::before {
-  content: "";
-  width: 12px;
-  height: 12px;
-  flex: none;
-  background: currentColor;
-  -webkit-mask: var(--icon-lock) center / contain no-repeat;
-  mask: var(--icon-lock) center / contain no-repeat;
-}
-
-/* 顶部操作条 */
 .sop-topbar {
   display: flex;
   flex-direction: row;
@@ -1156,7 +971,6 @@ function statusLabel(status) {
   gap: var(--space-2);
 }
 
-/* 新建故障表单面板 */
 .new-fault-panel {
   display: grid;
   gap: var(--space-3);
@@ -1318,7 +1132,6 @@ function statusLabel(status) {
   gap: var(--space-2);
 }
 
-/* 页内状态提示 */
 .status-banner {
   display: flex;
   align-items: center;
@@ -1357,7 +1170,6 @@ function statusLabel(status) {
   cursor: pointer;
 }
 
-/* 三栏主体 */
 .sop-columns {
   display: grid;
   grid-template-columns: minmax(220px, 252px) minmax(0, 1.45fr) minmax(300px, 356px);
@@ -1365,7 +1177,6 @@ function statusLabel(status) {
   align-items: start;
 }
 
-/* 响应式：窄屏自动堆叠 */
 @media (max-width: 1120px) {
   .sop-columns {
     grid-template-columns: minmax(220px, 252px) minmax(0, 1fr);

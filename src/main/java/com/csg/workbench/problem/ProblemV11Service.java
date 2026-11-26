@@ -1,6 +1,7 @@
 package com.csg.workbench.problem;
 
 import com.csg.workbench.account.AccountMapper;
+import com.csg.workbench.account.AccountService;
 import com.csg.workbench.device.DeviceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
@@ -34,8 +35,18 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProblemV11Service {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter BIZ_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final String VERSION_CONFLICT = "工单已被他人更新，请刷新后重试";
     private static final Set<String> CHANNELS = new HashSet<String>(Arrays.asList("400", "miniprogram", "provider", "wecom", "phone"));
     private static final Set<String> URGENCIES = new HashSet<String>(Arrays.asList("low", "normal", "high"));
+    private static final Set<String> SUSPEND_REASONS = new HashSet<String>(Arrays.asList(
+        "customer_reboot", "customer_evidence", "parts_wait", "field_wait"));
+    private static final Set<String> GRADES = new HashSet<String>(Arrays.asList("A", "B", "C"));
+    private static final Set<String> DISPOSALS = new HashSet<String>(Arrays.asList("remote", "part", "replace", "onsite"));
+    private static final Set<String> ESCALATION_LEVELS = new HashSet<String>(Arrays.asList("none", "l2", "expert"));
+    private static final Set<String> EVIDENCE_TYPES = new HashSet<String>(Arrays.asList(
+        "photo", "video", "timestamp_log", "site_compare", "swap_test", "platform_data"));
+    private static final Set<String> EVIDENCE_SOURCES = new HashSet<String>(Arrays.asList(
+        "agent", "sms", "miniprogram", "field"));
     private static final Map<String, Integer> FIELD_ORDER_RANK = buildFieldRank();
 
     private final ProblemMapper mapper;
@@ -346,6 +357,240 @@ public class ProblemV11Service {
         return out;
     }
 
+    @Transactional
+    public void addFollowupV11(String id, String note, int expectedVersion, String requestId) {
+        String cleanNote = blankToNull(note);
+        if (cleanNote == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写跟进记录");
+        }
+        if (replay(requestId, ProblemService.digest("v11-followup", id, cleanNote, String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        String state = String.valueOf(row.get("state"));
+        if (mapper.changeState(id, state, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        mapper.insertActivity(id, actor(), "followup", cleanNote);
+    }
+
+    @Transactional
+    public void handoffV11(String id, String target, String reason, int expectedVersion, String requestId) {
+        if (replay(requestId, ProblemService.digest("v11-handoff", id, target, reason, String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        String currentOwner = ownerOf(row);
+        if (isUnowned(currentOwner)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ProblemService.CLAIM_FIRST);
+        }
+        requireProcessingActor(row);
+        if (target == null || target.equals(currentOwner)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择另一名启用账号");
+        }
+        Map<String, Object> assignee = accounts.find(target);
+        if (assignee == null || !AccountService.flag(assignee.get("enabled"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "接收账号不存在或已禁用");
+        }
+        String why = reason == null ? "" : reason.trim();
+        if (why.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写转交原因");
+        }
+        if (mapper.assignOwner(id, target, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        mapper.insertOwnership(id, actor(), currentOwner, target, "handoff", why);
+        mapper.insertActivity(id, actor(), "handoff", "由 " + currentOwner + " 交给 " + target + "：" + why);
+    }
+
+    @Transactional
+    public void suspendV11(String id, String reason, boolean returnToPool, String nextStep, LocalDateTime dueAt,
+                           int expectedVersion, String requestId) {
+        if (!SUSPEND_REASONS.contains(reason)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "挂起原因无效");
+        }
+        if (replay(requestId, ProblemService.digest("v11-suspend", id, reason, String.valueOf(returnToPool), nextStep,
+            String.valueOf(dueAt), String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        if (dueAt != null && !dueAt.isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择未来的回访时间");
+        }
+        String from = String.valueOf(row.get("state"));
+        ProblemStateMachine.requireTransition(from, ProblemStateMachine.SUSPENDED);
+        String currentOwner = ownerOf(row);
+        String nextOwner = returnToPool ? "early" : currentOwner;
+        if (mapper.suspendProblem(id, reason, nextOwner, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        if (dueAt != null) {
+            mapper.completeFollowup(id);
+            String stepText = blankToNull(nextStep) == null ? suspendLabel(reason) : nextStep.trim();
+            mapper.schedule(id, returnToPool ? "共享池" : actor(), stepText, dueAt);
+        }
+        if (returnToPool && !isUnowned(currentOwner)) {
+            mapper.insertOwnership(id, actor(), currentOwner, "early", "handoff", "挂起回池：" + suspendLabel(reason));
+        }
+        String note = "挂起（" + suspendLabel(reason) + "）" + (returnToPool ? "，已回池共享" : "");
+        if (blankToNull(nextStep) != null) {
+            note = note + "：" + nextStep.trim();
+        }
+        mapper.insertTransition(id, from, ProblemStateMachine.SUSPENDED, actor(), "suspend", note);
+        mapper.insertActivity(id, actor(), "suspend", note);
+    }
+
+    @Transactional
+    public void quickCloseV11(String id, String note, String evidenceSource, String evidence,
+                              int expectedVersion, String requestId) {
+        String source = blankToNull(evidenceSource);
+        if (source == null) {
+            source = "platform";
+        }
+        if (!("customer".equals(source) || "platform".equals(source) || "field".equals(source))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "核验来源无效");
+        }
+        String cleanNote = blankToNull(note);
+        if (cleanNote == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写完结说明");
+        }
+        String cleanEvidence = blankToNull(evidence);
+        if (cleanEvidence == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写完结依据");
+        }
+        if (replay(requestId, ProblemService.digest("v11-quick-close", id, cleanNote, source, cleanEvidence,
+            String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        String from = String.valueOf(row.get("state"));
+        if (mapper.activeFieldOrders(id) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "请先登记现场单处理结果");
+        }
+        String disposal = mapper.disposalType(id);
+        if ("replace".equals(disposal) || "part".equals(disposal) || "onsite".equals(disposal)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "换装、换件或上门类工单不能走简单快通道");
+        }
+        ProblemStateMachine.requireTransition(from, ProblemStateMachine.PENDING_ACCEPT);
+        mapper.completeFollowup(id);
+        mapper.verify(id, actor(), source, cleanEvidence);
+        mapper.setResume(id, null);
+        if (mapper.changeState(id, ProblemStateMachine.PENDING_ACCEPT, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        String detail = cleanNote + "（依据：" + cleanEvidence + "）";
+        mapper.insertTransition(id, from, ProblemStateMachine.PENDING_ACCEPT, actor(), "quick_close", detail);
+        mapper.insertActivity(id, actor(), "quick_close", "简单工单快通道提交待验收：" + detail);
+    }
+
+    @Transactional
+    public void escalateV11(String id, String level, String reason, boolean compromise,
+                            int expectedVersion, String requestId) {
+        if (!ESCALATION_LEVELS.contains(level)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "升级级别无效");
+        }
+        String why = reason == null ? "" : reason.trim();
+        if (why.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写升级或妥协原因");
+        }
+        if (replay(requestId, ProblemService.digest("v11-escalate", id, level, why, String.valueOf(compromise),
+            String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        if (mapper.updateEscalation(id, level, why, compromise ? 1 : 0, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        StringBuilder text = new StringBuilder();
+        if (!"none".equals(level)) {
+            text.append("升级至").append("expert".equals(level) ? "专家" : "二线");
+        } else {
+            text.append("解除升级");
+        }
+        if (compromise) {
+            text.append(" · 标记妥协工单");
+        }
+        text.append("：").append(why);
+        mapper.insertActivity(id, actor(), "escalate", text.toString());
+    }
+
+    @Transactional
+    public void addEvidenceV11(String id, String evidenceType, String source, String fileName, String note,
+                               int expectedVersion, String requestId) {
+        if (!EVIDENCE_TYPES.contains(evidenceType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "证据类型无效");
+        }
+        String normalizedSource = blankToNull(source);
+        if (normalizedSource == null) {
+            normalizedSource = "agent";
+        } else if (!EVIDENCE_SOURCES.contains(normalizedSource)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "证据来源无效");
+        }
+        String cleanFile = fileName == null ? "" : fileName.trim();
+        String cleanNote = note == null ? "" : note.trim();
+        if (cleanNote.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写证据说明");
+        }
+        if (replay(requestId, ProblemService.digest("v11-evidence", id, evidenceType, normalizedSource, cleanFile, cleanNote,
+            String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        mapper.insertEvidence(id, evidenceType, normalizedSource, cleanFile, cleanNote, actor());
+        String state = String.valueOf(row.get("state"));
+        if (mapper.changeState(id, state, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        String suffix = cleanFile.isEmpty() ? "" : " [" + cleanFile + "]";
+        mapper.insertActivity(id, actor(), "evidence", "登记证据（" + evidenceLabel(evidenceType) + "）" + suffix + "：" + cleanNote);
+    }
+
+    @Transactional
+    public void assessV11(String id, String grade, String disposalType, String note,
+                          int expectedVersion, String requestId) {
+        if (!GRADES.contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "判定等级无效");
+        }
+        if (!DISPOSALS.contains(disposalType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "处置方式无效");
+        }
+        if ("C".equals(grade) && "replace".equals(disposalType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "C级证据不足，禁止选择换装，请补充证据或改为低成本处置");
+        }
+        String cleanNote = note == null ? "" : note.trim();
+        if (replay(requestId, ProblemService.digest("v11-assess", id, grade, disposalType, cleanNote,
+            String.valueOf(expectedVersion)), id)) {
+            return;
+        }
+        Map<String, Object> row = lockActive(id, expectedVersion);
+        requireProcessingActor(row);
+        String approvalNote = null;
+        if ("replace".equals(disposalType)) {
+            if (mapper.countEvidences(id) < 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "换装处置需至少登记一条证据后再提交判定");
+            }
+            approvalNote = "系统自动校验通过：证据已登记、在保状态有效、未超换装阈值（模拟自动审批）";
+        }
+        if (mapper.updateAssessment(id, grade, disposalType, approvalNote, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, VERSION_CONFLICT);
+        }
+        mapper.insertAssessment(id, grade, disposalType, "replace".equals(disposalType) ? 1 : 0, approvalNote, cleanNote, actor());
+        StringBuilder text = new StringBuilder();
+        text.append("判定 ").append(grade).append("级 · ").append(disposalLabel(disposalType));
+        if (!cleanNote.isEmpty()) {
+            text.append("：").append(cleanNote);
+        }
+        if (approvalNote != null) {
+            text.append("（").append(approvalNote).append("）");
+        }
+        mapper.insertActivity(id, actor(), "assessment", text.toString());
+    }
+
     public Map<String, Object> monthlyReport() {
         LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
         Map<String, Object> stats = mapper.monthlySummary(now);
@@ -405,6 +650,68 @@ public class ProblemV11Service {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "重复请求的内容不一致");
         }
         return true;
+    }
+
+    private static String ownerOf(Map<String, Object> row) {
+        Object owner = row.get("owner");
+        return owner == null ? "" : String.valueOf(owner);
+    }
+
+    private static boolean isUnowned(String owner) {
+        return owner == null || owner.trim().isEmpty() || "early".equals(owner);
+    }
+
+    private void requireProcessingActor(Map<String, Object> row) {
+        String owner = ownerOf(row);
+        if (isUnowned(owner)) {
+            if (!hasAnyRole("ROLE_ADMIN")) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, ProblemService.CLAIM_FIRST);
+            }
+            return;
+        }
+        if (!hasAnyRole("ROLE_ADMIN") && !actor().equals(owner)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, ProblemService.HANDLER_REQUIRED);
+        }
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    private static String suspendLabel(String reason) {
+        switch (reason) {
+            case "customer_reboot": return "等待客户断电重启";
+            case "customer_evidence": return "等待客户上传证据";
+            case "parts_wait": return "等待备件到货";
+            case "field_wait": return "等待乐装回传";
+            default: return reason;
+        }
+    }
+
+    private static String evidenceLabel(String type) {
+        switch (type) {
+            case "photo": return "现场照片";
+            case "video": return "短视频/录屏";
+            case "timestamp_log": return "故障时点/日志";
+            case "site_compare": return "同站对照";
+            case "swap_test": return "单变量替换测试";
+            case "platform_data": return "平台报文/充电记录";
+            default: return type;
+        }
+    }
+
+    private static String disposalLabel(String disposal) {
+        switch (disposal) {
+            case "remote": return "远程处置";
+            case "part": return "换件";
+            case "replace": return "换装";
+            case "onsite": return "上门排查";
+            default: return disposal;
+        }
     }
 
     private static String actor() {

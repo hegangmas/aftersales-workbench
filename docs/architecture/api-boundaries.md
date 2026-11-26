@@ -97,19 +97,19 @@
 | `POST /api/problems/{id}/field-orders` | `linkFieldOrder` | 旧版在 `field` 态人工关联外部现场单号 | `POST /api/v11/problems/{id}/dispatch`（`dispatch`，直接派单生成 `LZ-*` 并进入 `pending_callback`） |
 | `POST /api/problems/{id}/field-orders/result` | `recordFieldResult` | 旧版手工登记 `field_order` 状态与回执 | `POST /api/v11/problems/{id}/lezhuang-callback`（`lezhuangCallback`，含状态防回退与旧件同步） |
 
-### 2. 仍承载 V1.1 辅助 / 旁路写能力的兼容接口（暂未迁入 `ProblemV11Controller`）
+### 2. 仍承载 V1.1 辅助 / 旁路写能力的兼容接口（已在 Controller 内收口委托 `ProblemV11Service`）
 
-以下接口目前仍被 V1.1 前端工作台（`PersonalWorkbench.vue` / `WorkflowExtras.vue` / `SopEvidencePanel.vue`）直接调用，**保留可用**，但同样严禁借此绕开 V1.1 状态机：
+以下接口仍沿用 `/api/problems/{id}/*` 路径（URL、入参与 HTTP 状态码保持 100% 兼容），但已收口委托至 `ProblemV11Service` 执行 V1.1 规则与状态机校验：
 
-| 接口路径 | 方法名 | 当前用途 | 后续收口边界 |
+| 接口路径 | 方法名 | 委托 Service 方法 | V1.1 收口规则 |
 | --- | --- | --- | --- |
-| `POST /api/problems/{id}/followups` | `followup` | 追加工单跟进记录（`activity`） | 仅写活动时间线，不改工单主状态 |
-| `POST /api/problems/{id}/handoff` | `handoff` | 已认领工单转交其他在岗人员 | 仅变更 `owner` 并记交接事件，不改主状态 |
-| `POST /api/problems/{id}/suspend` | `suspend` | 挂起（4 类原因）与释放回池 | 后续需将落库目标态与 `ProblemStateMachine.SUSPENDED`（`suspended`）及恢复流转完全对齐 |
-| `POST /api/problems/{id}/quick-close` | `quickClose` | 简单咨询/远程恢复快通道完结（拦截换装/换件/上门） | 后续需统一收口至 `ProblemStateMachine.CLOSED`（`closed`）终态口径 |
-| `POST /api/problems/{id}/escalate` | `escalate` | 二线/专家升级与妥协工单旁路标记 | 仅更新旁路字段，严禁破坏主状态 |
-| `POST /api/problems/{id}/evidences` | `addEvidence` | 登记证据元数据（类型、来源、本地文件名、备注） | 仅写入 `evidence_item`，供 A/B/C 与换装校验使用 |
-| `POST /api/problems/{id}/assessment` | `assess` | 提交 A/B/C 分级与处置方式判定（C 级禁换装、换装需证据） | 仅更新判定字段并生成模拟自动校验留痕 |
+| `POST /api/problems/{id}/followups` | `followup` | `ProblemV11Service.addFollowupV11` | 仅写活动时间线并递增 `version`，不改工单主状态 |
+| `POST /api/problems/{id}/handoff` | `handoff` | `ProblemV11Service.handoffV11` | 仅变更已认领非终态工单的 `owner` 并写交接事件与活动日志，不改主状态 |
+| `POST /api/problems/{id}/suspend` | `suspend` | `ProblemV11Service.suspendV11` | 校验 `ProblemStateMachine.requireTransition(..., "suspended")`，落库态为 `suspended` 并写 `state_transition_log`；`returnToPool=true` 时保持 `suspended` 并置 `owner=early` |
+| `POST /api/problems/{id}/quick-close` | `quickClose` | `ProblemV11Service.quickCloseV11` | 拦截换装/换件/上门工单，校验 `ProblemStateMachine.requireTransition(..., "pending_accept")`，流转至 `pending_accept` 并写核验依据、活动日志与 `state_transition_log`，后续走正常验收闭环进入 `closed` |
+| `POST /api/problems/{id}/escalate` | `escalate` | `ProblemV11Service.escalateV11` | 仅更新升级级别与妥协标记并写活动日志，不改主状态 |
+| `POST /api/problems/{id}/evidences` | `addEvidence` | `ProblemV11Service.addEvidenceV11` | 仅写入 `evidence_item` 并递增 `version`，供 A/B/C 与换装校验使用 |
+| `POST /api/problems/{id}/assessment` | `assess` | `ProblemV11Service.assessV11` | 更新判定字段并写入 `assessment_record`（C 级禁换装、换装需证据） |
 
 ---
 
@@ -153,13 +153,13 @@
 | `POST /api/v11/problems/{id}/cancel` | `ProblemV11Service.cancel` | 是（流转至 `cancelled`） | 是 | 主干 |
 | `POST /api/v11/problems/{id}/reopen` | `ProblemV11Service.reopen` | 是（新建关联单进入 `pending_assign`） | 是（`new -> pending_assign`） | 主干 |
 | `POST /api/v11/problems/force-distribute` | `ProblemV11Service.forceDistribute` | 是（`pending_assign -> processing`） | 是 | 主干 |
-| `POST /api/problems/{id}/followups` | `ProblemService.recordFollowup` | 否（仅写 `activity` 并递增 `version`） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/handoff` | `ProblemService.handoff` | 否（仅变更 `owner` 并写交接事件） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/suspend` | `ProblemService.suspend` | 是（当前直接写 `waiting`，待对齐 `suspended`） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/quick-close` | `ProblemService.quickClose` | 是（当前直接写 `resolved`，待对齐 `closed`） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/escalate` | `ProblemService.escalate` | 否（仅更新升级级别与妥协标记） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/evidences` | `ProblemService.addEvidence` | 否（仅写入 `evidence_item` 并递增 `version`） | 否 | 待收口，禁止新增逻辑 |
-| `POST /api/problems/{id}/assessment` | `ProblemService.assess` | 否（仅更新 `grade` / `disposal_type` 等判定字段） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/followups` | `ProblemV11Service.addFollowupV11` | 否（仅写 `activity` 并递增 `version`） | 否 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/handoff` | `ProblemV11Service.handoffV11` | 否（仅变更 `owner` 并写交接事件，不改主状态） | 否 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/suspend` | `ProblemV11Service.suspendV11` | 是（校验状态机后流转至 `suspended`，可选回池置 `owner=early`） | 是 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/quick-close` | `ProblemV11Service.quickCloseV11` | 是（非换装/换件/上门工单流转至 `pending_accept`，后续经验收闭环至 `closed`） | 是 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/escalate` | `ProblemV11Service.escalateV11` | 否（仅更新升级级别与妥协标记，不改主状态） | 否 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/evidences` | `ProblemV11Service.addEvidenceV11` | 否（仅写入 `evidence_item` 并递增 `version`） | 否 | 已收口至 V1.1 |
+| `POST /api/problems/{id}/assessment` | `ProblemV11Service.assessV11` | 否（更新判定字段并写入 `assessment_record`） | 否 | 已收口至 V1.1 |
 | `POST /api/problems`（`@Deprecated`） | `ProblemService.create` | 是（旧版建单默认 `open`） | 否 | 已废弃，禁止新增逻辑 |
 | `POST /api/problems/{id}/claim`（`@Deprecated`） | `ProblemService.claim` | 否（仅变更 `owner`） | 否 | 已废弃，禁止新增逻辑 |
 | `POST /api/problems/{id}/callback`（`@Deprecated`） | `ProblemService.schedule` | 是（切入旧态 `waiting`） | 否 | 已废弃，禁止新增逻辑 |

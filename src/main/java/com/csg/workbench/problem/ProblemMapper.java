@@ -186,7 +186,7 @@ public interface ProblemMapper {
     int updateFieldOrder(@Param("id") String id, @Param("number") String number,
                          @Param("state") String state, @Param("receipt") String receipt);
 
-    @Update("UPDATE problem SET state = 'waiting', suspend_reason = #{reason}, owner = #{owner}, "
+    @Update("UPDATE problem SET state = 'suspended', suspend_reason = #{reason}, owner = #{owner}, "
         + "version = version + 1 WHERE id = #{id} AND version = #{version}")
     int suspendProblem(@Param("id") String id, @Param("reason") String reason,
                        @Param("owner") String owner, @Param("version") int version);
