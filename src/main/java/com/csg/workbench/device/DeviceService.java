@@ -1,14 +1,27 @@
 package com.csg.workbench.device;
 
+import com.csg.workbench.integration.CallCenterClient;
+import com.csg.workbench.integration.CallCenterClient.CallCenterResult;
+import com.csg.workbench.integration.InstallClient;
+import com.csg.workbench.integration.InstallClient.InstallResult;
+import com.csg.workbench.integration.LezhuangClient;
+import com.csg.workbench.integration.LezhuangClient.LezhuangResult;
+import com.csg.workbench.integration.MesClient;
+import com.csg.workbench.integration.MesClient.MesResult;
+import com.csg.workbench.integration.SimulatedCallCenterClient;
+import com.csg.workbench.integration.SimulatedInstallClient;
+import com.csg.workbench.integration.SimulatedLezhuangClient;
+import com.csg.workbench.integration.SimulatedMesClient;
+import com.csg.workbench.integration.SourceStatus;
 import com.csg.workbench.problem.ProblemMapper;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,14 +29,35 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DeviceService {
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
-    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
     private final DeviceMapper devices;
     private final ProblemMapper problems;
+    private final MesClient mesClient;
+    private final InstallClient installClient;
+    private final LezhuangClient lezhuangClient;
+    private final CallCenterClient callCenterClient;
 
-    public DeviceService(DeviceMapper devices, ProblemMapper problems) {
+    @Autowired
+    public DeviceService(DeviceMapper devices,
+                         ProblemMapper problems,
+                         MesClient mesClient,
+                         InstallClient installClient,
+                         LezhuangClient lezhuangClient,
+                         CallCenterClient callCenterClient) {
         this.devices = devices;
         this.problems = problems;
+        this.mesClient = mesClient;
+        this.installClient = installClient;
+        this.lezhuangClient = lezhuangClient;
+        this.callCenterClient = callCenterClient;
+    }
+
+    public DeviceService(DeviceMapper devices, ProblemMapper problems) {
+        this(devices, problems,
+            new SimulatedMesClient(),
+            new SimulatedInstallClient(),
+            new SimulatedLezhuangClient(),
+            new SimulatedCallCenterClient());
     }
 
     public Map<String, Object> lookup(String query) {
@@ -85,11 +119,19 @@ public class DeviceService {
 
     private Map<String, Object> assembleProfile(Map<String, Object> row, String failSource, int matchCount) {
         String sn = String.valueOf(row.get("sn"));
-        String now = LocalDateTime.now(BUSINESS_ZONE).format(STAMP);
+        String now = SourceStatus.resolveQueriedAt(null);
+        String projectCode = String.valueOf(row.get("projectCode"));
+        String customerPhone = row.get("customerPhone") == null ? null : String.valueOf(row.get("customerPhone"));
+
         boolean mesFail = "mes".equalsIgnoreCase(failSource);
         boolean installFail = "install".equalsIgnoreCase(failSource);
         boolean callFail = "400".equalsIgnoreCase(failSource);
         boolean lezhuangFail = "lezhuang".equalsIgnoreCase(failSource);
+
+        MesResult mes = queryMesSafe(sn, row, mesFail, now);
+        InstallResult install = queryInstallSafe(sn, row, installFail, now);
+        CallCenterResult callCenter = queryCallCenterSafe(sn, customerPhone, callFail, now);
+        LezhuangResult lezhuang = queryLezhuangSafe(sn, projectCode, lezhuangFail, now);
 
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("device", sn);
@@ -111,10 +153,10 @@ public class DeviceService {
         out.put("slaMinutes", row.get("slaMinutes"));
         out.put("model", row.get("model"));
         out.put("productType", row.get("productType"));
-        out.put("manufacturedAt", mesFail ? null : row.get("manufacturedAt"));
-        out.put("mesBatch", mesFail ? null : row.get("mesBatch"));
-        out.put("mesTestResult", mesFail ? "MES接口暂不可用（降级）" : row.get("mesTestResult"));
-        out.put("installedAt", installFail ? null : row.get("installedAt"));
+        out.put("manufacturedAt", mes.getManufacturedAt());
+        out.put("mesBatch", mes.getMesBatch());
+        out.put("mesTestResult", mes.getMesTestResult());
+        out.put("installedAt", install.getInstalledAt());
         out.put("warrantyStatus", row.get("warrantyStatus"));
         out.put("warrantyUntil", row.get("warrantyUntil"));
         out.put("extendedWarranty", row.get("extendedWarranty"));
@@ -126,49 +168,57 @@ public class DeviceService {
 
         // 4 源并行状态
         List<Map<String, Object>> sources = new ArrayList<Map<String, Object>>();
-        sources.add(sourceState("MES生产系统", !mesFail, mesFail ? "超时降级，已标注缺口" : "已同步（模拟）", now));
-        sources.add(sourceState("售后安装系统", !installFail, installFail ? "暂不可用" : "已同步（模拟）", now));
-        sources.add(sourceState("400客服系统", !callFail, callFail ? "暂不可用" : "已同步（模拟）", now));
-        sources.add(sourceState("智享乐装", !lezhuangFail, lezhuangFail ? "暂不可用" : "已同步（模拟）", now));
+        sources.add(mes.getSourceStatus());
+        sources.add(install.getSourceStatus());
+        sources.add(callCenter.getSourceStatus());
+        sources.add(lezhuang.getSourceStatus());
         out.put("sourceStatuses", sources);
 
         // 模拟历史报修、历史维修、充电与录音、深链
-        out.put("repairHistory", lezhuangFail ? new ArrayList<Map<String, Object>>() : sampleRepairs(sn));
+        out.put("repairHistory", lezhuang.getRepairHistory());
         out.put("chargingRecords", sampleCharging(sn));
         out.put("recentAlerts", sampleAlerts(sn));
-        out.put("callRecordings", callFail ? new ArrayList<Map<String, Object>>() : sampleRecordings(sn));
-        out.put("simulatedCall", callFail ? null : sampleCall(String.valueOf(row.get("customerPhone"))));
+        out.put("callRecordings", callCenter.getCallRecordings());
+        out.put("simulatedCall", callCenter.getSimulatedCall());
         out.put("relatedProblems", problems.findByDevice(sn));
-        out.put("deepLinks", deepLinks(sn, String.valueOf(row.get("projectCode"))));
+        out.put("deepLinks", deepLinks(sn, mes.getTraceDeepLink(), lezhuang.getInstallOrderDeepLink()));
         return out;
     }
 
-    private static Map<String, Object> sourceState(String name, boolean ok, String note, String queriedAt) {
-        Map<String, Object> m = new LinkedHashMap<String, Object>();
-        m.put("name", name);
-        m.put("ok", Boolean.valueOf(ok));
-        m.put("note", note);
-        m.put("queriedAt", queriedAt);
-        return m;
+    private MesResult queryMesSafe(String sn, Map<String, Object> row, boolean fail, String now) {
+        try {
+            return mesClient.queryDevice(sn, row, fail, now);
+        } catch (RuntimeException ex) {
+            log.warn("MES client call failed for sn={}: {}", sn, ex.getMessage());
+            return MesResult.degraded(sn, "超时降级，已标注缺口", now);
+        }
     }
 
-    private static List<Map<String, Object>> sampleRepairs(String sn) {
-        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
-        Map<String, Object> r1 = new LinkedHashMap<String, Object>();
-        r1.put("date", "2026-10-12");
-        r1.put("orderNo", "LZ-20261012-09");
-        r1.put("summary", "更换 4G 通信模块");
-        r1.put("source", "智享乐装（模拟）");
-        r1.put("deepLink", "#lezhuang/LZ-20261012-09");
-        list.add(r1);
-        Map<String, Object> r2 = new LinkedHashMap<String, Object>();
-        r2.put("date", "2026-09-05");
-        r2.put("orderNo", "RM-20260905-03");
-        r2.put("summary", "远程升级主板程序（" + sn + "）");
-        r2.put("source", "远程运维（模拟）");
-        r2.put("deepLink", "#charger-platform/" + sn);
-        list.add(r2);
-        return list;
+    private InstallResult queryInstallSafe(String sn, Map<String, Object> row, boolean fail, String now) {
+        try {
+            return installClient.queryInstall(sn, row, fail, now);
+        } catch (RuntimeException ex) {
+            log.warn("Install client call failed for sn={}: {}", sn, ex.getMessage());
+            return InstallResult.degraded("暂不可用", now);
+        }
+    }
+
+    private CallCenterResult queryCallCenterSafe(String sn, String phone, boolean fail, String now) {
+        try {
+            return callCenterClient.queryCallHistory(sn, phone, fail, now);
+        } catch (RuntimeException ex) {
+            log.warn("CallCenter client call failed for sn={}: {}", sn, ex.getMessage());
+            return CallCenterResult.degraded("暂不可用", now);
+        }
+    }
+
+    private LezhuangResult queryLezhuangSafe(String sn, String projectCode, boolean fail, String now) {
+        try {
+            return lezhuangClient.queryServiceRecords(sn, projectCode, fail, now);
+        } catch (RuntimeException ex) {
+            log.warn("Lezhuang client call failed for sn={}: {}", sn, ex.getMessage());
+            return LezhuangResult.degraded(projectCode, "暂不可用", now);
+        }
     }
 
     private static List<Map<String, Object>> sampleCharging(String sn) {
@@ -201,37 +251,11 @@ public class DeviceService {
         return list;
     }
 
-    private static List<Map<String, Object>> sampleRecordings(String sn) {
-        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
-        Map<String, Object> r1 = new LinkedHashMap<String, Object>();
-        r1.put("id", "REC-" + sn + "-01");
-        r1.put("time", "11-25 10:22");
-        r1.put("title", "通话录音");
-        r1.put("duration", "00:45");
-        list.add(r1);
-        Map<String, Object> r2 = new LinkedHashMap<String, Object>();
-        r2.put("id", "REC-" + sn + "-02");
-        r2.put("time", "11-25 10:15");
-        r2.put("title", "通话录音");
-        r2.put("duration", "03:28");
-        list.add(r2);
-        return list;
-    }
-
-    private static Map<String, Object> sampleCall(String phone) {
-        Map<String, Object> call = new LinkedHashMap<String, Object>();
-        call.put("callId", "CALL-400-SIM-01");
-        call.put("caller", phone == null ? "138****1234" : phone);
-        call.put("duration", "00:22");
-        call.put("recordingStatus", "录音中");
-        return call;
-    }
-
-    private static Map<String, String> deepLinks(String sn, String projectCode) {
+    private static Map<String, String> deepLinks(String sn, String mesTraceLink, String installOrderLink) {
         Map<String, String> links = new LinkedHashMap<String, String>();
         links.put("devicePlatform", "https://charger-platform.internal/devices/" + sn);
-        links.put("mesBatch", "https://mes.internal/trace/" + sn);
-        links.put("installOrder", "https://lezhuang.internal/install/" + projectCode);
+        links.put("mesBatch", mesTraceLink);
+        links.put("installOrder", installOrderLink);
         return links;
     }
 }

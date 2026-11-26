@@ -20,6 +20,12 @@ public class ProblemController {
         this.problems = problems;
     }
 
+    /**
+     * @deprecated 旧版问题单创建接口（仅保留向后兼容，严禁新增字段）。
+     *     新需求请统一使用 V1.1 接口 {@code POST /api/v11/problems}
+     *     （{@link ProblemV11Controller#create}）。
+     */
+    @Deprecated
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, String> create(@RequestHeader("Idempotency-Key") String requestId,
@@ -71,6 +77,11 @@ public class ProblemController {
         return problems.board(state, owner, category, kind, q, cursor, limit, bucket);
     }
 
+    /**
+     * @deprecated 旧版预约回访接口（会切入旧态 {@code waiting}，仅保留向后兼容，严禁新增字段）。
+     *     V1.1 已收口至 {@code /api/v11/problems/*} 状态机流转（暂停等待请使用挂起能力）。
+     */
+    @Deprecated
     @PostMapping("/{id}/callback")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void schedule(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
@@ -78,6 +89,13 @@ public class ProblemController {
         problems.schedule(id, request.owner, request.nextStep, request.dueAt, request.expectedVersion, requestId);
     }
 
+    /**
+     * @deprecated 旧版回访结果与结案接口（仅保留向后兼容，严禁新增字段）。
+     *     V1.1 验收闭环/驳回请使用 {@code POST /api/v11/problems/{id}/accept}
+     *     （{@link ProblemV11Controller#accept}），转派现场请使用 {@code POST /api/v11/problems/{id}/dispatch}
+     *     （{@link ProblemV11Controller#dispatch}）。
+     */
+    @Deprecated
     @PostMapping("/{id}/callback/result")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void finish(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
@@ -86,6 +104,12 @@ public class ProblemController {
             request.evidenceSource, request.evidence, request.expectedVersion, requestId);
     }
 
+    /**
+     * @deprecated 旧版无主工单认领接口（仅保留向后兼容，严禁新增字段）。
+     *     V1.1 认领与指派请统一使用 {@code POST /api/v11/problems/{id}/assign}
+     *     （{@link ProblemV11Controller#assign}）。
+     */
+    @Deprecated
     @PostMapping("/{id}/claim")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void claim(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
@@ -100,6 +124,12 @@ public class ProblemController {
         problems.handoff(id, request.target, request.reason, request.expectedVersion, requestId);
     }
 
+    /**
+     * @deprecated 旧版待现场派单撤回接口（仅保留向后兼容，严禁新增字段）。
+     *     V1.1 请使用 {@code POST /api/v11/problems/{id}/accept}（驳回退回处理中）或
+     *     {@code POST /api/v11/problems/{id}/cancel}（{@link ProblemV11Controller#cancel}）。
+     */
+    @Deprecated
     @PostMapping("/{id}/field-withdrawal")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void withdrawField(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
@@ -107,6 +137,12 @@ public class ProblemController {
         problems.withdrawField(id, request.reason, request.expectedVersion, requestId);
     }
 
+    /**
+     * @deprecated 旧版现场单人工关联接口（仅保留向后兼容，严禁新增字段）。
+     *     V1.1 派单请统一使用 {@code POST /api/v11/problems/{id}/dispatch}
+     *     （{@link ProblemV11Controller#dispatch}）。
+     */
+    @Deprecated
     @PostMapping("/{id}/field-orders")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void linkFieldOrder(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
@@ -114,6 +150,12 @@ public class ProblemController {
         problems.linkFieldOrder(id, request.externalNo, request.expectedVersion, requestId);
     }
 
+    /**
+     * @deprecated 旧版现场单回执登记接口（仅保留向后兼容，严禁新增字段）。
+     *     V1.1 结构化回传请统一使用 {@code POST /api/v11/problems/{id}/lezhuang-callback}
+     *     （{@link ProblemV11Controller#lezhuangCallback}）。
+     */
+    @Deprecated
     @PostMapping("/{id}/field-orders/result")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void recordFieldResult(@PathVariable String id, @RequestHeader("Idempotency-Key") String requestId,
