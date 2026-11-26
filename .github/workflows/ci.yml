@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Run backend tests
+        run: mvn -B test -Dtest="ProblemServiceTest,ProblemV11ServiceTest,BoardQueriesTest,ApiErrorsTest,AccountServiceTest"
+
+      - name: Package backend
+        run: mvn -B package -DskipTests
+
+  frontend-build-and-guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install dependencies and build frontend
+        run: cd web && npm ci && npm run build
+
+      - name: Run UI redline static scan
+        run: |
+          set +e
+          grep -rnE 'font-size:[[:space:]]*(9|10|11)px|#0284c7|#3B82C4|#3b82c4|#2563eb|#1d4ed8|#0369a1' \
+            web/src/views/ web/src/components/ web/src/styles/workbench.css
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::命中 UI 红线（禁止使用 9-11px 字号或禁用蓝色系色值），请修复上述匹配行。"
+            exit 1
+          elif [ "$status" -gt 1 ]; then
+            echo "::error::UI 红线扫描异常退出（exit=$status），请检查目标路径。"
+            exit "$status"
+          fi

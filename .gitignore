@@ -1,7 +1,12 @@
 target/
 node_modules/
 dist/
+web/dist/
 .env
 .env.*
 !.env.example
 .DS_Store
+.vscode/
+.idea/
+*.iml
+*.log

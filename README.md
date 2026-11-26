@@ -13,11 +13,11 @@ Java / Vue 试用工程。首条链路使用模拟设备与故障，支持创建
 3. 进入 `web`，运行 `npm ci` 和 `npm run serve`。打开终端显示的本地地址。
 4. 查询 `SIM-AC-001` 或模拟手机号 `19900000001`，创建问题单，保存跟进。按界面显示的问题单 ID 核对 `problem` 和 `activity` 两张表。
 
-后端默认只监听本机 `127.0.0.1:8788`，开发时 Vue CLI 将 `/api` 转发到该地址。打开页面后使用部署时配置的试用账号登录。设备与故障仍是模拟数据。登录页右上角标「测试环境」，工作台侧栏标「模拟数据」。
+后端默认只监听本机 `127.0.0.1:8788`，开发时 Vue CLI 将 `/api` 转发到该地址。打开页面后使用部署时配置的试用账号登录。设备与故障仍是模拟数据。登录页右上角标「测试环境」。
 
-界面按松果青绿视觉规范：品牌色 `#0F766E` / `#0D9488`，浅底 `#E8F6F4`，画布 `#F5F7FA`，侧栏纯白。登录页在宽屏左右分屏，窄于 900px 时改为顶部品牌条。工作台左侧栏宽 228px，窄于 960px 时收成顶栏和抽屉。问题单状态用互不混淆的浅色胶囊，待认领行用 `#FFFBF2` 和左侧琥珀条。错误仍用文字和 `#C0362C`，不把青绿当作错误色。
+界面已由旧左侧栏 228px 改为「全宽顶栏 + 二级下拉」布局：一级导航固定 5 项（工作台、工单、设备、知识库、管理）；「管理」下拉含 4 项（客户与项目、SOP 与规则、指标与报表、权限与配置）；「工单」下含 3 个页签（调度大屏 | 统一工单池 | 我的待办）。配色沿用松果青绿浅色风（品牌色 `#0F766E` / `#0D9488`、浅底 `#E8F6F4`、冷灰画布 `#F3F5F5`、卡片纯白；登录页在宽屏左右分屏，窄于 900px 时改为顶部品牌条；问题单状态用互不混淆的浅色胶囊，待认领行用 `#FFFBF2` 和左侧琥珀条；错误仍用文字和 `#C0362C`，不把青绿当作错误色），完整组件与 Design Tokens 规范见 [docs/ui-design-system.md](docs/ui-design-system.md)。
 
-空库首次启动时，用 `WORKBENCH_LOGIN_USER` 和 `WORKBENCH_LOGIN_PASSWORD_HASH` 创建一名管理员，不把口令写入仓库。库里已有账号时不会覆盖。管理员可创建或禁用坐席；至少保留一名启用的管理员。历史问题的负责人仍是原来的 `early`，表示无主，不会改写成某个真人。无主问题可以认领。转交要填写原因，并记下操作者、交出方和接收方。写操作要带当前 `version` 和 `Idempotency-Key`。版本过期或其他状态冲突返回 409。跟进、回访安排、回访结果、转交、撤回待派单、现场单关联和回执出现 409 时，页面给出中文原因和「一键刷新工单」。刷新会取回最新状态和版本号，并尽量把还没提交的草稿留在原来的表单里。如果刷新后已经结案，或这项操作不再适用，页面说明原因，并保留未提交的文字。待现场派单且还没有处理中的现场单时，可以填写原因「撤回待派单，返回排查」；已关联且未结束的现场单不能靠撤回跳过。不支持的 HTTP 方法返回 405 和 `Allow`，内容类型不对返回 415，内部错误仍是 500 且不包含 SQL。
+空库首次启动时，用 `WORKBENCH_LOGIN_USER` 和 `WORKBENCH_LOGIN_PASSWORD_HASH` 创建一名管理员（如 `demo`），同时自动初始化 `dispatcher`（调度）、`agent`（坐席 `operator`）、`engineer`（工程师）共 4 角色演示账号（共用同一初始 `{bcrypt}` 口令哈希，若与管理员重名则跳过），不把口令写入仓库。库里已有账号时不会覆盖。管理员可创建或禁用坐席；至少保留一名启用的管理员。历史问题的负责人仍是原来的 `early`，表示无主，不会改写成某个真人。无主问题可以认领。转交要填写原因，并记下操作者、交出方和接收方。写操作要带当前 `version` 和 `Idempotency-Key`。版本过期或其他状态冲突返回 409。跟进、回访安排、回访结果、转交、撤回待派单、现场单关联和回执出现 409 时，页面给出中文原因和「一键刷新工单」。刷新会取回最新状态和版本号，并尽量把还没提交的草稿留在原来的表单里。如果刷新后已经结案，或这项操作不再适用，页面说明原因，并保留未提交的文字。待现场派单且还没有处理中的现场单时，可以填写原因「撤回待派单，返回排查」；已关联且未结束的现场单不能靠撤回跳过。不支持的 HTTP 方法返回 405 和 `Allow`，内容类型不对返回 415，内部错误仍是 500 且不包含 SQL。
 
 已认领的问题单，只有当前负责人和管理员可以保存跟进、安排回访、提交回访结果（含确认恢复并结案）、转交、撤回待派单、关联现场单和登记回执。其他坐席调用这些写接口得到 403 和中文原因，时间线、状态、版本、回访任务和现场单都不变。负责人为空或 `early` 的无主单仍按先认领处理：普通坐席要先认领，管理员可以继续直接处理；转交无主单仍然要先认领。当前没有单独的授权接班人。历史 `early` 保持原值，直到有人认领。页面在无权处理时说明原因；如果请求仍然返回 403，错误提示使用服务端的中文原因。
 
@@ -31,13 +31,16 @@ V7 只新增查桩历史索引 `problem_device_updated`（`problem(device, updat
 
 V8（`V8__v11_core_workflow.sql`）为 `problem` 新增可空或带默认值字段（故障时点 `fault_occurred_at`、挂起原因 `suspend_reason`、A/B/C 等级 `grade`、处置方式 `disposal_type`、妥协/升级标记 `compromise_flag` / `escalation_level` / `escalation_reason`、SLA 截止时间 `sla_due_at`、自动审批说明 `auto_approval_note`）并新增证据元数据表 `evidence_item`，不改旧表结构与历史数据。回滚到不含 V8 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`，不要清库。
 
+最新 Flyway 迁移为 V9（`V9__v11_strict_rebuild.sql`）：在保留 V5–V8 迁移的基础上对齐 V1.1 严格一期业务底座——引入 6+1 严格状态（待分配 `pending_assign`、处理中 `processing`、挂起 `suspended`、待回传 `pending_callback`、待验收 `pending_accept`、已闭环 `closed` + 已取消 `cancelled`）、`ticket_sequence` 表支持 `GD+YYYYMMDD+4位` 发号、设备与客户本地模拟主档表（`customer_profile`、`device_profile`、`phone_sn_mapping`）、SOP 知识库与规则表（`sop_entry`）、评估/通话/状态流转日志表（`assessment_record`、`call_record`、`state_transition_log`），并扩展 `account.duty_status`、`problem` 与 `field_order` 字段；空库首次启动自动初始化 4 角色演示账号（`demo` / `WORKBENCH_LOGIN_USER` 管理员、`dispatcher` 调度、`agent` 坐席、`engineer` 工程师）。回滚到不含 V9 文件的包时，启动前设置 `SPRING_FLYWAY_IGNORE_MISSING_MIGRATIONS=true`，不要清库或执行 `flyway clean`。
+
 ## 找代码
 
 - `device` 提供设备和故障查询，当前使用模拟数据。
-- `problem` 负责问题受理、详情、跟进和团队总表。`GET /api/problems/board` 按状态、负责人、故障分类和类型筛选，并按短号、桩编码或标题搜索。排序固定为更新时间倒序、主键倒序。响应另附只读 `summary`：`total` 与 `states` 各桶（待认领、处理中、待排查、待回访、待派单、现场处理中、待验证、已结案、已答复、已转出）之和相等，并与不带其他筛选的 `bucket` 查询总数一致；`due`、`dueMine`、`mine` 分别与到期回访团队、到期回访我的、我的待办的 `total` 相同。`bucket` 只改变当前列表，不改统计口径。无主且未结案计入待认领，不重复计入流程状态。待派单与现场处理中都对应 `field`，以是否还有未结束的现场单区分。问题创建与首条活动记录在同一事务中保存。页面按松果青绿视觉规范呈现登录、总表、详情、查桩建单、账号与改密；待认领数和到期回访数取自上述统计。
+- `problem` 负责问题受理、详情、跟进和团队总表；其中 `ProblemV11Controller`、`ProblemV11Service` 与 `ProblemStateMachine` 负责 V1.1 严格 6+1 状态机校验、`GD+YYYYMMDD+4位` 发号、设备待补例外队列、智享乐装派单与结构化回传、旧件登记闭环、重开新单及月度指标。`GET /api/problems/board` 按状态、负责人、故障分类和类型筛选，并按短号、桩编码或标题搜索。排序固定为更新时间倒序、主键倒序。响应另附只读 `summary`：`total` 与 `states` 各桶（待认领、处理中、待排查、待回访、待派单、现场处理中、待验证、已结案、已答复、已转出）之和相等，并与不带其他筛选的 `bucket` 查询总数一致；`due`、`dueMine`、`mine` 分别与到期回访团队、到期回访我的、我的待办的 `total` 相同。`bucket` 只改变当前列表，不改统计口径。无主且未结案计入待认领，不重复计入流程状态。待派单与现场处理中都对应 `field`，以是否还有未结束的现场单区分。问题创建与首条活动记录在同一事务中保存。页面按松果青绿视觉规范呈现登录、总表、详情、查桩建单、账号与改密；待认领数和到期回访数取自上述统计。
+- `sop`（`SopController`、`SopService`、`SopMapper`）提供只读知识库接口（`/api/knowledge/sops`）与管理端唯一 SOP/审批规则写入和发布接口（`/api/admin/sops`）。
 - `account` 负责账号、本人改密和管理员重置。重置和改密写入 `security_audit`，响应和日志不包含口令或哈希。
 - `web/src/api/workbench.js` 集中放置浏览器请求。
-- 页面级组件位于 `web/src/views/`（含调度大屏 `DispatchDashboard.vue`、知识库与 SOP `KnowledgeSopView.vue`、三栏个人工作台 `PersonalWorkbench.vue`、问题单总表 `ProblemBoard.vue`、查桩与建单 `IntakePanel.vue`、账号管理 `AccountPanel.vue` 与改密 `PasswordPanel.vue`），复用组件位于 `web/src/components/`（含三栏派单至智享乐装 `FieldDispatchPanel.vue`、SOP 与证据缩略卡 `SopEvidencePanel.vue`、挂起回池/快通道/SLA 升级/A-B-C 判定 `WorkflowExtras.vue` 等）。个人工作台含 6 节点进度条、证据缩略卡、模拟维修/录音信息、挂起回池、快通道、SLA 升级、A/B/C 判定与三栏派单至智享乐装；外部设备档案、维修履历、400 录音摘要与自动校验留痕均为明确标注的模拟数据展示，尚未接入真实生产接口。
+- 页面级组件位于 `web/src/views/`（含设备档案与建单 `DeviceLookupView.vue`、调度大屏 `DispatchDashboard.vue`、知识库与 SOP `KnowledgeSopView.vue`、三栏个人工作台 `PersonalWorkbench.vue`、问题单总表 `ProblemBoard.vue`、查桩与建单 `IntakePanel.vue`、账号管理 `AccountPanel.vue` 与改密 `PasswordPanel.vue`），复用组件位于 `web/src/components/`（含三栏派单至智享乐装 `FieldDispatchPanel.vue`、SOP 与证据缩略卡 `SopEvidencePanel.vue`、挂起回池/快通道/SLA 升级/A-B-C 判定 `WorkflowExtras.vue` 等）。个人工作台含 6 节点进度条、证据缩略卡、模拟维修/录音信息、挂起回池、快通道、SLA 升级、A/B/C 判定与三栏派单至智享乐装；外部设备档案、维修履历、400 录音摘要与自动校验留痕均为明确标注的模拟数据展示，尚未接入真实生产接口。
 - `src/main/resources/db/migration` 存放数据库迁移。当前从 Python 试用版表结构建立独立测试库。已有数据库的接入需核对迁移基线。
 
 首批审核范围是接口、包结构和写库事务。项目范围授权、上游真实接口与通话属于后续批次。

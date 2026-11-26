@@ -20,7 +20,7 @@ def request(path, status=200, body=None, key=None, token=True):
         body = dict(body, expectedVersion=current["version"])
     data = None if body is None else json.dumps(body).encode()
     headers = {} if data is None else {"Content-Type": "application/json"}
-    if data is not None and path.startswith("/api/problems"):
+    if data is not None and (path.startswith("/api/problems") or path.startswith("/api/v11/problems")):
         headers["Idempotency-Key"] = key or ("smoke-" + uuid.uuid4().hex)
     if data is not None and csrf and token:
         headers["X-CSRF-TOKEN"] = csrf
@@ -507,3 +507,218 @@ print("处理权限、无主认领和创建账号空响应通过")
 request("/api/session/logout", 204, {})
 request("/api/session", 401)
 print("登录、退出、即时回访和恢复证据通过")
+
+
+def verify_v11_strict_flow():
+    prev_client, prev_csrf = client, csrf
+    admin_user = os.environ["WORKBENCH_TEST_USER"]
+    admin_client, admin_token = session_for(admin_user, os.environ["WORKBENCH_TEST_PASSWORD"])
+    activate(admin_client, admin_token)
+    try:
+        # 1. 设备 4 源查询与单源降级
+        dev_ok = request("/api/devices/search?query=CD26080101")
+        assert dev_ok["sn"] == "CD26080101" and dev_ok["device"] == "CD26080101"
+        statuses_ok = dev_ok["sourceStatuses"]
+        assert len(statuses_ok) == 4 and all(item["ok"] is True for item in statuses_ok), statuses_ok
+
+        dev_degraded = request("/api/devices/search?query=CD26080101&failSource=mes")
+        assert dev_degraded["sn"] == "CD26080101"
+        assert dev_degraded["mesBatch"] is None and "降级" in dev_degraded["mesTestResult"]
+        statuses_deg = {item["name"]: item for item in dev_degraded["sourceStatuses"]}
+        assert len(statuses_deg) == 4
+        assert statuses_deg["MES生产系统"]["ok"] is False and "降级" in statuses_deg["MES生产系统"]["note"]
+        assert all(statuses_deg[name]["ok"] is True for name in ("售后安装系统", "400客服系统", "智享乐装"))
+
+        # 2. SOP 读写隔离（关键红线）
+        knowledge_sops = request("/api/knowledge/sops")
+        assert isinstance(knowledge_sops, list) and len(knowledge_sops) >= 1
+        for item in knowledge_sops:
+            assert "gradeThresholds" not in item and "autoApprovalRules" not in item, item
+            assert "gradeThresholdsJson" not in item and "autoApprovalRulesJson" not in item, item
+
+        admin_sops = request("/api/admin/sops")
+        assert isinstance(admin_sops, list) and len(admin_sops) >= 1
+        assert any(
+            isinstance(item.get("gradeThresholds"), dict) and len(item["gradeThresholds"]) > 0
+            and isinstance(item.get("autoApprovalRules"), list) and len(item["autoApprovalRules"]) > 0
+            for item in admin_sops
+        ), admin_sops
+
+        now_biz = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+        occurred_at = (now_biz - timedelta(minutes=5)).isoformat(timespec="minutes")
+        appointment_at = (now_biz + timedelta(hours=2)).isoformat(timespec="minutes")
+
+        # 3. 待补设备禁止派单门禁
+        pending_created = request("/api/v11/problems", 201, {
+            "devicePending": True,
+            "title": "V1.1待补设备门禁测试",
+            "description": "来电暂未提供桩SN，需待补设备后派单",
+            "channel": "400",
+            "category": "无法充电",
+            "urgency": "normal",
+            "faultOccurredAt": occurred_at,
+        })
+        pending_id = pending_created["id"]
+        assert pending_created["ticketNo"].startswith("GD"), pending_created
+        pending_detail = request("/api/problems/" + pending_id)
+        assert pending_detail["state"] == "pending_assign" and bool(pending_detail["devicePending"]) is True
+
+        assert_safe(request("/api/v11/problems/" + pending_id + "/dispatch", 409, {
+            "isClaim": False,
+            "returnToFactory": False,
+            "projectCode": "PRJ-HF-2026-01",
+            "appointmentAt": appointment_at,
+            "photoNames": "pending-gate.jpg",
+            "expectedVersion": pending_detail["version"],
+        }), "设备信息待补")
+
+        request("/api/v11/problems/" + pending_id + "/bind-device", 204, {
+            "device": "CD26080101",
+            "expectedVersion": pending_detail["version"],
+        })
+        bound_detail = request("/api/problems/" + pending_id)
+        assert bound_detail["device"] == "CD26080101" and not bound_detail["devicePending"]
+
+        request("/api/v11/problems/" + pending_id + "/assign", 204, {
+            "target": admin_user,
+            "expectedVersion": bound_detail["version"],
+        })
+        assigned_pending = request("/api/problems/" + pending_id)
+        assert assigned_pending["state"] == "processing" and assigned_pending["owner"] == admin_user
+
+        pending_dispatched = request("/api/v11/problems/" + pending_id + "/dispatch", 200, {
+            "isClaim": False,
+            "returnToFactory": False,
+            "projectCode": "PRJ-HF-2026-01",
+            "appointmentAt": appointment_at,
+            "photoNames": "bound-ok.jpg",
+            "expectedVersion": assigned_pending["version"],
+        })
+        assert pending_dispatched["externalNo"].startswith("LZ-"), pending_dispatched
+        assert request("/api/problems/" + pending_id)["state"] == "pending_callback"
+
+        # 4. 智享乐装派单 -> 回传幂等 -> 旧件结案卡点
+        flow_created = request("/api/v11/problems", 201, {
+            "device": "CD26080101",
+            "devicePending": False,
+            "title": "V1.1乐装闭环与旧件卡点测试",
+            "description": "交流桩告警，需派单更换部件并登记旧件",
+            "channel": "400",
+            "category": "无法充电",
+            "urgency": "high",
+            "faultOccurredAt": occurred_at,
+        })
+        flow_id = flow_created["id"]
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "pending_assign"
+
+        request("/api/v11/problems/" + flow_id + "/assign", 204, {
+            "target": admin_user,
+            "expectedVersion": flow_detail["version"],
+        })
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "processing"
+
+        request("/api/problems/" + flow_id + "/assessment", 204, {
+            "grade": "B",
+            "disposalType": "part",
+            "note": "判定B级换件处置，触发旧件结案卡点",
+            "expectedVersion": flow_detail["version"],
+        })
+        flow_detail = request("/api/problems/" + flow_id)
+
+        dispatched = request("/api/v11/problems/" + flow_id + "/dispatch", 200, {
+            "isClaim": True,
+            "returnToFactory": False,
+            "projectCode": "PRJ-HF-2026-01",
+            "appointmentAt": appointment_at,
+            "photoNames": "fault-plate.jpg",
+            "expectedVersion": flow_detail["version"],
+        })
+        external_no = dispatched["externalNo"]
+        assert external_no.startswith("LZ-"), dispatched
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "pending_callback"
+
+        cb_path = "/api/v11/problems/" + flow_id + "/lezhuang-callback"
+        request(cb_path, 204, {
+            "externalNo": external_no,
+            "state": "accepted",
+            "receipt": "服务商已接单",
+            "expectedVersion": flow_detail["version"],
+        })
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "pending_callback"
+
+        request(cb_path, 204, {
+            "externalNo": external_no,
+            "state": "arrived",
+            "receipt": "工程师已到达现场",
+            "expectedVersion": flow_detail["version"],
+        })
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "pending_callback"
+
+        completed_key = "smoke-lz-complete-" + uuid.uuid4().hex[:16]
+        completed_body = {
+            "externalNo": external_no,
+            "state": "completed",
+            "receipt": "已更换故障模块并复测充电正常",
+            "replacedParts": "控制主板",
+            "customerAcceptResult": "客户现场确认恢复",
+            "feeOwner": "厂内质保",
+            "expectedVersion": flow_detail["version"],
+        }
+        request(cb_path, 204, completed_body, key=completed_key)
+        # 重复幂等回传不崩溃
+        request(cb_path, 204, completed_body, key=completed_key)
+
+        flow_detail = request("/api/problems/" + flow_id)
+        assert flow_detail["state"] == "pending_accept"
+
+        # 倒退回传不崩溃，并记录异常留痕而不倒退工单/派单状态
+        request(cb_path, 204, {
+            "externalNo": external_no,
+            "state": "arrived",
+            "receipt": "模拟乱序倒退回调",
+            "expectedVersion": flow_detail["version"],
+        })
+        after_rollback = request("/api/problems/" + flow_id)
+        assert after_rollback["state"] == "pending_accept"
+        assert after_rollback["fieldOrders"][0]["state"] == "completed"
+        assert "检测到状态回退回调" in (after_rollback["fieldOrders"][0].get("rollbackAnomalyNote") or "")
+        assert any(item["action"] == "callback_anomaly" for item in after_rollback["activities"])
+
+        # 旧件结案卡点：未登记旧件禁止闭环，补齐旧件号后闭环成功进入 closed
+        assert_safe(request("/api/v11/problems/" + flow_id + "/accept", 409, {
+            "approved": True,
+            "note": "未登记旧件尝试闭环",
+            "expectedVersion": after_rollback["version"],
+        }), "旧件未登记")
+
+        old_part_no = "OLD-PART-" + flow_id[:8]
+        request("/api/v11/problems/" + flow_id + "/accept", 204, {
+            "approved": True,
+            "note": "旧件已核销回收，准予闭环",
+            "oldPartNo": old_part_no,
+            "expectedVersion": after_rollback["version"],
+        })
+        closed_detail = request("/api/problems/" + flow_id)
+        assert closed_detail["state"] == "closed"
+        assert bool(closed_detail["oldPartRegistered"]) is True
+        assert closed_detail["oldPartNo"] == old_part_no
+        print("V1.1 严格一期核心闭环通过")
+    finally:
+        try:
+            request("/api/session/logout", 204, {})
+            request("/api/session", 401)
+        finally:
+            activate(prev_client, prev_csrf)
+
+
+def main():
+    verify_v11_strict_flow()
+
+
+if __name__ == "__main__":
+    main()
