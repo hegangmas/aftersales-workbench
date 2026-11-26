@@ -4,8 +4,8 @@
 
 | 编号 | 需求 | 状态 | 确认版本 | 验收记录 |
 | --- | --- | --- | --- | --- |
-| REQ-001 | [售后个人工作台](REQ-001-personal-workbench.md) | 待验收 | 效果图已确认；代码提交 `4d7e9f5`（本轮持续优化中） | [2026-11-25 首轮验收记录](../acceptance/REQ-001-003-acceptance-20261125.md)（待补 smoke.py 与业务确认） |
-| REQ-002 | [充电桩管理平台只读数据接入](REQ-002-charger-platform-read-integration.md) | 讨论中 | 待双方确认接口及数据口径 | 待验收 |
-| REQ-003 | [售后中台业务内核一期（挂起回池、快通道、SOP 与 A/B/C 证据判定）](REQ-003-v11-core-workflow.md) | 开发中 | 基于《售后工单中台系统技术开发方案 V1.1》第 1 步范围开发 | [2026-11-25 首轮验收记录](../acceptance/REQ-001-003-acceptance-20261125.md)（待补 smoke.py 与业务确认） |
+| REQ-001 | [售后个人工作台](REQ-001-personal-workbench.md) | 待业务签收 | V1.1 严格重建基线，提交 `a06eb24`（Flyway V9；技术门禁与阿里云实机部署已通过，待业务负责人最终签收） | [2026-11-25/26 验收与复测记录](../acceptance/REQ-001-003-acceptance-20261125.md) |
+| REQ-002 | [充电桩管理平台只读数据接入](REQ-002-charger-platform-read-integration.md) | 讨论中 | 讨论中（待充电桩管理平台团队确认接口） | 待验收 |
+| REQ-003 | [售后中台业务内核一期（挂起回池、快通道、SOP 与 A/B/C 证据判定）](REQ-003-v11-core-workflow.md) | 待业务签收 | V1.1 严格重建基线，提交 `a06eb24`（Flyway V9；技术门禁与阿里云实机部署已通过，待业务负责人最终签收） | [2026-11-25/26 验收与复测记录](../acceptance/REQ-001-003-acceptance-20261125.md) |
 
 状态建议：讨论中、已确认、开发中、待验收、已完成、暂停。新增时使用 [需求模板](TEMPLATE.md)，并更新本表。历史规划见 [资料总入口](../README.md)，不自动转换为已确认需求。
