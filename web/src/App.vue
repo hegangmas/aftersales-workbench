@@ -266,41 +266,19 @@
       <KnowledgeSopView v-else-if="view === 'knowledge'" read-only />
 
       <!-- 一级菜单 5：管理 → 4 个二级页面 -->
-      <section v-else-if="view === 'admin-customers'" class="panel">
-        <div class="fig2-card-head">
-          <h2>客户与项目档案</h2>
-          <button class="btn secondary" type="button" @click="loadCustomersList">刷新</button>
-        </div>
-        <p class="muted">本地模拟客户与项目主档（外部安装系统接入后自动同步）。</p>
-        <table v-if="customers.length" class="tickets" style="margin-top:12px;">
-          <thead>
-            <tr><th>客户ID</th><th>客户名称</th><th>联系人</th><th>电话</th><th>项目编号</th><th>项目名称</th><th>类型/SLA</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="c in customers" :key="c.id">
-              <td>{{ c.id }}</td><td>{{ c.name }}</td><td>{{ c.contactName }}</td><td>{{ c.phone }}</td>
-              <td>{{ c.projectCode }}</td><td>{{ c.projectName }}</td><td>{{ c.customerType }} · {{ c.slaMinutes }}分钟</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <AdminCustomersView
+        v-else-if="view === 'admin-customers' && canSeeAdminMenu"
+        :customers="customers"
+        @refresh="loadCustomersList"
+      />
 
-      <KnowledgeSopView v-else-if="view === 'admin-sop'" :read-only="false" />
+      <KnowledgeSopView v-else-if="view === 'admin-sop' && canSeeAdminMenu" :read-only="false" />
 
-      <section v-else-if="view === 'admin-reports'" class="panel">
-        <div class="fig2-card-head">
-          <h2>指标与报表（V1.1 4.11 六项月度指标）</h2>
-          <button class="btn secondary" type="button" @click="loadMonthlyReport">刷新指标</button>
-        </div>
-        <div v-if="monthlyReport" class="evidence-thumbs" style="margin-top:12px;">
-          <div class="evidence-thumb"><span class="thumb-badge">1. 工单总量 / 漏单率</span><strong>{{ monthlyReport.totalTickets }} 单</strong><small>漏单率：{{ monthlyReport.leakRateSimulated }}</small></div>
-          <div class="evidence-thumb"><span class="thumb-badge">2. 平均受理时长</span><strong>{{ monthlyReport.avgAcceptMinutesSimulated }} 分钟</strong><small>模拟节点均值</small></div>
-          <div class="evidence-thumb"><span class="thumb-badge">3. SLA 达成率</span><strong>{{ monthlyReport.slaPassRate }}</strong><small>当前超时：{{ monthlyReport.slaOverdueCount }} 单</small></div>
-          <div class="evidence-thumb"><span class="thumb-badge">4. 换装率 / 误判率</span><strong>{{ monthlyReport.replaceRate }}</strong><small>误判率：{{ monthlyReport.misjudgeRateSimulated }}</small></div>
-          <div class="evidence-thumb"><span class="thumb-badge">5. 妥协工单占比</span><strong>{{ monthlyReport.compromiseRate }}</strong><small>设备待补：{{ monthlyReport.devicePendingCount }} 单</small></div>
-          <div class="evidence-thumb"><span class="thumb-badge">6. 催单与升级投诉</span><strong>{{ monthlyReport.urgeAndComplaintSimulated }} 次</strong><small>含旁路升级记录</small></div>
-        </div>
-      </section>
+      <AdminReportsView
+        v-else-if="view === 'admin-reports' && canSeeAdminMenu"
+        :monthly-report="monthlyReport"
+        @refresh="loadMonthlyReport"
+      />
 
       <AccountPanel
         v-else-if="view === 'admin-accounts' && account.role === 'admin'"
@@ -328,17 +306,20 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BrandLogo from './components/BrandLogo.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import QueueList from './components/QueueList.vue'
-import AccountPanel from './views/AccountPanel.vue'
-import DeviceLookupView from './views/DeviceLookupView.vue'
-import DispatchDashboard from './views/DispatchDashboard.vue'
-import KnowledgeSopView from './views/KnowledgeSopView.vue'
-import PasswordPanel from './views/PasswordPanel.vue'
-import PersonalWorkbench from './views/PersonalWorkbench.vue'
-import ProblemBoard from './views/ProblemBoard.vue'
+
+const AccountPanel = defineAsyncComponent(() => import(/* webpackChunkName: "view-account" */ './views/AccountPanel.vue'))
+const AdminCustomersView = defineAsyncComponent(() => import(/* webpackChunkName: "view-admin-customers" */ './views/AdminCustomersView.vue'))
+const AdminReportsView = defineAsyncComponent(() => import(/* webpackChunkName: "view-admin-reports" */ './views/AdminReportsView.vue'))
+const DeviceLookupView = defineAsyncComponent(() => import(/* webpackChunkName: "view-device" */ './views/DeviceLookupView.vue'))
+const DispatchDashboard = defineAsyncComponent(() => import(/* webpackChunkName: "view-dispatch" */ './views/DispatchDashboard.vue'))
+const KnowledgeSopView = defineAsyncComponent(() => import(/* webpackChunkName: "view-sop" */ './views/KnowledgeSopView.vue'))
+const PasswordPanel = defineAsyncComponent(() => import(/* webpackChunkName: "view-password" */ './views/PasswordPanel.vue'))
+const PersonalWorkbench = defineAsyncComponent(() => import(/* webpackChunkName: "view-workbench" */ './views/PersonalWorkbench.vue'))
+const ProblemBoard = defineAsyncComponent(() => import(/* webpackChunkName: "view-board" */ './views/ProblemBoard.vue'))
 import { emptyFilters, useBoardQueues } from './composables/useBoardQueues'
 import { useProblemDraft } from './composables/useProblemDraft'
 import { initial, orderNumber, roleLabel } from './status'
@@ -454,7 +435,7 @@ function clearAccount() {
   closeMenus()
 }
 
-function syncUrl() {
+function syncUrl(push = false) {
   if (!account.value) {
     history.replaceState(null, '', location.pathname)
     return
@@ -466,7 +447,10 @@ function syncUrl() {
     params.set('view', view.value)
     if (view.value === 'tickets') params.set('tab', ticketTab.value)
   }
-  history.replaceState(null, '', '?' + params.toString())
+  const target = '?' + params.toString()
+  if (location.search === target) return
+  if (push) history.pushState(null, '', target)
+  else history.replaceState(null, '', target)
 }
 
 async function prepareWorkspace() {
@@ -480,30 +464,45 @@ async function prepareWorkspace() {
   await restoreRoute()
 }
 
+function guardViewForRole(reqView) {
+  if (!canSeeInternal.value && ['device', 'due', 'admin-customers', 'admin-sop', 'admin-reports', 'admin-accounts'].includes(reqView)) {
+    return 'tickets'
+  }
+  if (!canSeeAdminMenu.value && reqView.startsWith('admin-')) return 'tickets'
+  if (reqView === 'admin-accounts' && account.value?.role !== 'admin') return 'tickets'
+  return reqView
+}
+
 async function restoreRoute() {
   const params = new URLSearchParams(location.search)
   const problemId = params.get('problem')
   if (problemId) {
-    await showProblem(problemId)
+    await showProblem(problemId, { fromPopState: true })
     return
   }
   const reqView = params.get('view')
   const validViews = ['tickets', 'device', 'knowledge', 'due', 'security', 'admin-customers', 'admin-sop', 'admin-reports', 'admin-accounts']
   if (reqView && validViews.includes(reqView)) {
-    view.value = reqView
+    view.value = guardViewForRole(reqView)
   } else {
     view.value = 'tickets'
   }
   if (view.value === 'tickets') {
     const t = params.get('tab')
-    if (['dispatch', 'pool', 'mine'].includes(t)) ticketTab.value = t
+    if (['dispatch', 'pool', 'mine'].includes(t) && (t !== 'dispatch' || canSeeInternal.value)) {
+      ticketTab.value = t
+    }
     if (ticketTab.value === 'mine') await loadMine(false)
   } else if (view.value === 'admin-customers') {
     await loadCustomersList()
   } else if (view.value === 'admin-reports') {
     await loadMonthlyReport()
   }
-  syncUrl()
+  syncUrl(false)
+}
+
+function handlePopState() {
+  if (account.value) run(restoreRoute)
 }
 
 function signIn() {
@@ -540,7 +539,7 @@ function openWorkbenchTab() {
   closeMenus()
   if (problem.value) {
     view.value = 'detail'
-    syncUrl()
+    syncUrl(true)
     return
   }
   if (boardItems.value.length) {
@@ -548,13 +547,13 @@ function openWorkbenchTab() {
     return
   }
   view.value = 'detail'
-  syncUrl()
+  syncUrl(true)
 }
 
 function openTicketsRoot() {
   closeMenus()
   view.value = 'tickets'
-  syncUrl()
+  syncUrl(true)
   run(async () => {
     await loadBoard()
     if (ticketTab.value === 'mine') await loadMine(false)
@@ -563,7 +562,7 @@ function openTicketsRoot() {
 
 function switchTicketTab(tab) {
   ticketTab.value = tab
-  syncUrl()
+  syncUrl(true)
   if (tab === 'mine') run(() => loadMine(false))
   else run(() => loadBoard())
 }
@@ -574,23 +573,23 @@ function openPoolWithBucket(bucket) {
   boardFilters.value = { ...emptyFilters(), bucket: bucket || '' }
   boardCursors.value = [null]
   boardPage.value = 0
-  syncUrl()
+  syncUrl(true)
   return run(loadBoard)
 }
 
 function showNav(next) {
   closeMenus()
-  view.value = next
-  syncUrl()
+  view.value = guardViewForRole(next)
+  syncUrl(true)
 }
 
 function showAdmin(next) {
   closeMenus()
-  view.value = next
-  syncUrl()
-  if (next === 'admin-customers') run(loadCustomersList)
-  else if (next === 'admin-reports') run(loadMonthlyReport)
-  else if (next === 'admin-accounts') run(async () => { await loadAccounts(); assignees.value = await assignableAccounts() })
+  view.value = guardViewForRole(next)
+  syncUrl(true)
+  if (view.value === 'admin-customers') run(loadCustomersList)
+  else if (view.value === 'admin-reports') run(loadMonthlyReport)
+  else if (view.value === 'admin-accounts') run(async () => { await loadAccounts(); assignees.value = await assignableAccounts() })
 }
 
 function jumpToDevice(sn) {
@@ -605,6 +604,7 @@ function onTicketCreated(id) {
 
 async function showProblem(id, options) {
   const preserve = Boolean(options && options.preserveDraft)
+  const fromPopState = Boolean(options && options.fromPopState)
   const saved = preserve ? snapshotDraft() : null
   const [loaded, assignable] = await Promise.all([loadProblem(id), assignableAccounts()])
   problem.value = loaded
@@ -612,7 +612,7 @@ async function showProblem(id, options) {
   view.value = 'detail'
   if (preserve) restoreDraft(saved, problem.value)
   else fillFromServer(problem.value)
-  syncUrl()
+  syncUrl(!fromPopState)
 }
 
 function openProblem(id) {
@@ -898,6 +898,7 @@ onMounted(async () => {
     rememberAccount.value = true
   }
   window.addEventListener('workbench-session-expired', clearAccount)
+  window.addEventListener('popstate', handlePopState)
   try {
     account.value = await currentAccount()
   } catch (ignore) {
@@ -910,5 +911,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('workbench-session-expired', clearAccount)
+  window.removeEventListener('popstate', handlePopState)
 })
 </script>

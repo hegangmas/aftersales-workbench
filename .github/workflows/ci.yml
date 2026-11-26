@@ -24,7 +24,7 @@ jobs:
           cache: 'maven'
 
       - name: Run backend tests
-        run: mvn -B test -Dtest="ProblemServiceTest,ProblemV11ServiceTest,BoardQueriesTest,ApiErrorsTest,AccountServiceTest"
+        run: mvn -B test -Dtest="ProblemServiceTest,ProblemV11ServiceTest,BoardQueriesTest,ApiErrorsTest,AccountServiceTest,SimulatedIntegrationClientsTest"
 
       - name: Package backend
         run: mvn -B package -DskipTests
