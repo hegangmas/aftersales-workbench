@@ -12,6 +12,19 @@ on:
 jobs:
   backend-test:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pass
+          MYSQL_DATABASE: aftersales_workbench_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_pass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,11 +36,52 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
-      - name: Run backend tests
-        run: mvn -B test -Dtest="ProblemServiceTest,ProblemV11ServiceTest,BoardQueriesTest,ApiErrorsTest,AccountServiceTest,SimulatedIntegrationClientsTest"
+      - name: Check Flyway migrations baseline & sequence
+        run: python3 scripts/check_migrations.py
+
+      - name: Run backend unit & MySQL integration tests
+        env:
+          MVC_TEST_DB_URL: jdbc:mysql://127.0.0.1:3306/aftersales_workbench_ci?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8
+          MVC_TEST_DB_USER: root
+          MVC_TEST_DB_PASSWORD: ci_root_pass
+          MVC_TEST_PASSWORD: TempPass123
+          WORKBENCH_IT_REQUIRED: 'true'
+        run: mvn -B test
 
       - name: Package backend
         run: mvn -B package -DskipTests
+
+      - name: Run smoke test against packaged JAR
+        env:
+          PORT: '8788'
+          WORKBENCH_DB_URL: jdbc:mysql://127.0.0.1:3306/aftersales_workbench_smoke?createDatabaseIfNotExist=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8
+          WORKBENCH_DB_USER: root
+          WORKBENCH_DB_PASSWORD: ci_root_pass
+          WORKBENCH_LOGIN_USER: operator
+          # CI-only ephemeral test password hash for "SmokeTestPass123"
+          WORKBENCH_LOGIN_PASSWORD_HASH: '{bcrypt}$2y$04$kjN3PE2I1jy2vDXn9lEKt.KyQDIBWm7c7MAE2pxi8WyA98O8peBPy'
+          WORKBENCH_SECURE_COOKIE: 'false'
+          WORKBENCH_TEST_URL: http://127.0.0.1:8788
+          WORKBENCH_TEST_USER: operator
+          WORKBENCH_TEST_PASSWORD: SmokeTestPass123
+        run: |
+          set -euo pipefail
+          JAR_PATH="$(ls target/aftersales-workbench-*.jar | head -n 1)"
+          java -jar "$JAR_PATH" > /tmp/workbench-smoke.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -sf "$WORKBENCH_TEST_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -sf "$WORKBENCH_TEST_URL/api/health" >/dev/null; then
+            echo "::error::Backend failed to become healthy within 60s"
+            cat /tmp/workbench-smoke.log
+            exit 1
+          fi
+          python3 scripts/smoke.py
 
   frontend-build-and-guardrails:
     runs-on: ubuntu-latest
@@ -42,8 +96,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'web/package-lock.json'
 
-      - name: Install dependencies and build frontend
-        run: cd web && npm ci && npm run build
+      - name: Install dependencies, lint, test, and build frontend
+        run: cd web && npm ci && npm run lint && npm test && npm run build
 
       - name: Run UI redline static scan
         run: |

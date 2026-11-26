@@ -132,3 +132,47 @@
    - **不得穿透上层契约**：无论 `simulated` 还是 `real`，Controller 层出入参、错误码（`400`/`401`/`403`/`404`/`409`/`503`）及 `ProblemStateMachine` 状态流转规则保持一致。
    - **单源独立降级**：任一外部只读源超时或不可用时，仅返回该源的 `degraded` 结果并在 `sourceStatuses` 标注缺口，不得阻塞其他 3 源数据展示或工单主流程。
    - **回传幂等与状态防回退**：智享乐装真实回调进入工作台时，必须经过 `ProblemV11Service` 的幂等键校验与阶段秩防回退校验（不允许从高阶段回退覆盖低阶段，异常仅留痕告警）。
+
+---
+
+## 四、写入口登记表（D6 强约束台账）
+
+> [!IMPORTANT]
+> **变更登记铁律**：任何新增、修改或收口后端写接口的 PR，必须同步更新本表，并遵守 PR 模板勾选规范：
+> 1. 所有**工单主状态变更**只能通过 `ProblemV11Service` 调用 `ProblemMapper` 写状态方法，并在同一事务写入 `state_transition_log`（受 `ArchitectureRulesTest` 门禁守护）。
+> 2. 标注为「待收口，禁止新增逻辑」或「已废弃，禁止新增逻辑」的接口严禁新增业务字段、新状态流转或旁路逻辑。
+
+| 写接口 | 负责的 Service 方法 | 是否改状态 | 是否写 `state_transition_log` | 状态 |
+| --- | --- | --- | --- | --- |
+| `POST /api/v11/problems` | `ProblemV11Service.createV11` | 是（新建进入 `pending_assign`） | 是（`new -> pending_assign`） | 主干 |
+| `POST /api/v11/problems/{id}/bind-device` | `ProblemV11Service.bindDevice` | 否（补齐设备档案与快照，不改主状态） | 否 | 主干 |
+| `POST /api/v11/problems/{id}/assign` | `ProblemV11Service.acceptOrAssign` | 是（`pending_assign -> processing`） | 是 | 主干 |
+| `POST /api/v11/problems/{id}/dispatch` | `ProblemV11Service.dispatchToLezhuang` | 是（`processing -> pending_callback`） | 是 | 主干 |
+| `POST /api/v11/problems/{id}/lezhuang-callback` | `ProblemV11Service.handleLezhuangCallback` | 条件（仅 `completed` 时 `pending_callback -> pending_accept`；回退异常不改状态） | 条件（状态发生流转时写入） | 主干 |
+| `POST /api/v11/problems/{id}/accept` | `ProblemV11Service.acceptOrReject` | 是（`pending_accept -> closed / processing`） | 是 | 主干 |
+| `POST /api/v11/problems/{id}/cancel` | `ProblemV11Service.cancel` | 是（流转至 `cancelled`） | 是 | 主干 |
+| `POST /api/v11/problems/{id}/reopen` | `ProblemV11Service.reopen` | 是（新建关联单进入 `pending_assign`） | 是（`new -> pending_assign`） | 主干 |
+| `POST /api/v11/problems/force-distribute` | `ProblemV11Service.forceDistribute` | 是（`pending_assign -> processing`） | 是 | 主干 |
+| `POST /api/problems/{id}/followups` | `ProblemService.recordFollowup` | 否（仅写 `activity` 并递增 `version`） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/handoff` | `ProblemService.handoff` | 否（仅变更 `owner` 并写交接事件） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/suspend` | `ProblemService.suspend` | 是（当前直接写 `waiting`，待对齐 `suspended`） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/quick-close` | `ProblemService.quickClose` | 是（当前直接写 `resolved`，待对齐 `closed`） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/escalate` | `ProblemService.escalate` | 否（仅更新升级级别与妥协标记） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/evidences` | `ProblemService.addEvidence` | 否（仅写入 `evidence_item` 并递增 `version`） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems/{id}/assessment` | `ProblemService.assess` | 否（仅更新 `grade` / `disposal_type` 等判定字段） | 否 | 待收口，禁止新增逻辑 |
+| `POST /api/problems`（`@Deprecated`） | `ProblemService.create` | 是（旧版建单默认 `open`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/claim`（`@Deprecated`） | `ProblemService.claim` | 否（仅变更 `owner`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/callback`（`@Deprecated`） | `ProblemService.schedule` | 是（切入旧态 `waiting`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/callback/result`（`@Deprecated`） | `ProblemService.finishCallback` | 是（切向 `open` / `verify` / `field` / `resolved`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/field-withdrawal`（`@Deprecated`） | `ProblemService.withdrawField` | 是（`field -> triage`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/field-orders`（`@Deprecated`） | `ProblemService.linkFieldOrder` | 否（仅关联 `field_order` 并递增 `version`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/problems/{id}/field-orders/result`（`@Deprecated`） | `ProblemService.recordFieldResult` | 是（切向 `field` / `verify` / `triage`） | 否 | 已废弃，禁止新增逻辑 |
+| `POST /api/customers` | `DeviceService.createCustomerAndDevice` | 否（客户/设备档案，非工单状态） | 否 | 主干 |
+| `POST /api/admin/sops` | `SopService.saveDraft` | 否（SOP 草稿/发布，非工单状态） | 否 | 主干 |
+| `POST /api/admin/sops/{id}/publish` | `SopService.publish` | 否（SOP 发布，非工单状态） | 否 | 主干 |
+| `POST /api/accounts` | `AccountService.create` | 否（账号创建，非工单状态） | 否 | 主干 |
+| `POST /api/accounts/duty` | `AccountService.setDutyStatus` | 否（本人调整在岗状态，非工单状态） | 否 | 主干 |
+| `POST /api/accounts/{username}/duty` | `AccountService.setDutyStatus` | 否（调度/管理员调整在岗状态，非工单状态） | 否 | 主干 |
+| `POST /api/accounts/password` | `AccountService.changePassword` | 否（本人改密，非工单状态） | 否 | 主干 |
+| `POST /api/accounts/{username}/password` | `AccountService.resetPassword` | 否（管理员重置密码，非工单状态） | 否 | 主干 |
+| `POST /api/accounts/{username}/status` | `AccountService.setEnabled` | 否（账号启停用，非工单状态） | 否 | 主干 |

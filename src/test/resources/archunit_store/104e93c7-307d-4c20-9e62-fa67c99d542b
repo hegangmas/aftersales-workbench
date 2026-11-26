@@ -1,0 +1,11 @@
+com.csg.workbench.integration.CallCenterClient$CallCenterResult.getSimulatedCall() returns java.util.Map
+com.csg.workbench.integration.CallCenterClient$CallCenterResult.getSourceStatus() returns java.util.Map
+com.csg.workbench.integration.CallCenterClient$CallCenterResult.success(java.util.List, java.util.Map, java.lang.String, java.lang.String) accepts parameter java.util.Map
+com.csg.workbench.integration.InstallClient$InstallResult.getSourceStatus() returns java.util.Map
+com.csg.workbench.integration.InstallClient.queryInstall(java.lang.String, java.util.Map, boolean, java.lang.String) accepts parameter java.util.Map
+com.csg.workbench.integration.LezhuangClient$LezhuangResult.getSourceStatus() returns java.util.Map
+com.csg.workbench.integration.MesClient$MesResult.getSourceStatus() returns java.util.Map
+com.csg.workbench.integration.MesClient.queryDevice(java.lang.String, java.util.Map, boolean, java.lang.String) accepts parameter java.util.Map
+com.csg.workbench.integration.SimulatedInstallClient.queryInstall(java.lang.String, java.util.Map, boolean, java.lang.String) accepts parameter java.util.Map
+com.csg.workbench.integration.SimulatedMesClient.queryDevice(java.lang.String, java.util.Map, boolean, java.lang.String) accepts parameter java.util.Map
+com.csg.workbench.integration.SourceStatus.of(java.lang.String, boolean, java.lang.String, java.lang.String) returns java.util.Map

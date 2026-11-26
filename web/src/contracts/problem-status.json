@@ -1,0 +1,175 @@
+{
+  "version": "1.1",
+  "description": "Single source of truth for V1.1 6+1 problem states, allowed transitions, UI tones, and read-only legacy display mappings.",
+  "v11States": [
+    {
+      "code": "pending_assign",
+      "label": "待分配",
+      "tone": "waiting",
+      "group": "queue",
+      "terminal": false,
+      "allowedTransitions": [
+        "processing",
+        "suspended",
+        "cancelled"
+      ]
+    },
+    {
+      "code": "processing",
+      "label": "处理中",
+      "tone": "processing",
+      "group": "active",
+      "terminal": false,
+      "allowedTransitions": [
+        "suspended",
+        "pending_callback",
+        "pending_accept"
+      ]
+    },
+    {
+      "code": "suspended",
+      "label": "挂起",
+      "tone": "follow",
+      "group": "active",
+      "terminal": false,
+      "allowedTransitions": [
+        "processing",
+        "pending_callback",
+        "cancelled"
+      ]
+    },
+    {
+      "code": "pending_callback",
+      "label": "待回传",
+      "tone": "onsite",
+      "group": "active",
+      "terminal": false,
+      "allowedTransitions": [
+        "pending_accept",
+        "suspended"
+      ]
+    },
+    {
+      "code": "pending_accept",
+      "label": "待验收",
+      "tone": "verify",
+      "group": "active",
+      "terminal": false,
+      "allowedTransitions": [
+        "closed",
+        "processing"
+      ]
+    },
+    {
+      "code": "closed",
+      "label": "已闭环",
+      "tone": "closed",
+      "group": "terminal",
+      "terminal": true,
+      "allowedTransitions": []
+    },
+    {
+      "code": "cancelled",
+      "label": "已取消",
+      "tone": "closed",
+      "group": "terminal",
+      "terminal": true,
+      "allowedTransitions": []
+    }
+  ],
+  "legacyDisplayMap": {
+    "open": {
+      "label": "处理中",
+      "tone": "processing",
+      "v11Semantic": "processing",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "waiting": {
+      "label": "待回访",
+      "tone": "follow",
+      "v11Semantic": "suspended",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "field": {
+      "label": "现场处理中",
+      "tone": "onsite",
+      "v11Semantic": "pending_callback",
+      "displayOnly": true,
+      "note": "仅用于历史展示（未派单展示为 fieldPending/待派单，已派单展示为 fieldActive/现场处理中），禁止用于 V1.1 写操作"
+    },
+    "verify": {
+      "label": "待验证",
+      "tone": "verify",
+      "v11Semantic": "pending_accept",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "resolved": {
+      "label": "已结案",
+      "tone": "closed",
+      "v11Semantic": "closed",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "triage": {
+      "label": "待排查",
+      "tone": "triage",
+      "v11Semantic": "processing",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "answered": {
+      "label": "已答复",
+      "tone": "answered",
+      "v11Semantic": "closed",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    },
+    "referred": {
+      "label": "已转出",
+      "tone": "referred",
+      "v11Semantic": "closed",
+      "displayOnly": true,
+      "note": "仅用于历史展示，禁止用于 V1.1 写操作"
+    }
+  },
+  "buckets": {
+    "core": [
+      "",
+      "pending_assign",
+      "processing",
+      "suspended",
+      "pending_callback",
+      "pending_accept",
+      "closed",
+      "device_pending"
+    ],
+    "extra": [
+      "cancelled",
+      "unclaimed",
+      "open",
+      "triage",
+      "waiting",
+      "fieldPending",
+      "fieldActive",
+      "verify",
+      "resolved",
+      "answered",
+      "referred"
+    ],
+    "virtualLabels": {
+      "": "全部",
+      "device_pending": "设备待补",
+      "unclaimed": "待认领",
+      "fieldPending": "待派单",
+      "fieldActive": "现场处理中"
+    },
+    "virtualTones": {
+      "unclaimed": "waiting",
+      "fieldPending": "dispatch",
+      "fieldActive": "onsite"
+    }
+  }
+}

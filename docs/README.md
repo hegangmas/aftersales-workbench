@@ -5,7 +5,8 @@
 | 目录或资料 | 用途 |
 | --- | --- |
 | [产品资料](product/README.md) | 产品定位、业务术语和系统边界 |
-| [架构资料](architecture/README.md) | 技术架构、数据归属和接口边界 |
+| [架构资料](architecture/README.md) | 技术架构、接口边界、架构体检与护栏路线图 |
+| [UI 设计规范](ui-design-system.md) | 松果青绿 Design Tokens v2.0、基础组件规范与 UI 三条红线 |
 | [需求清单](requirements/README.md) | 需求状态、确认版本和分项需求 |
 | [决策记录](decisions/README.md) | 重要决策、依据及待决问题 |
 | [验收记录](acceptance/README.md) | 验收方案、结果和遗留问题 |

@@ -20,7 +20,7 @@
 
         <nav class="topbar-nav" aria-label="一级导航">
           <button
-            v-if="canSeeInternal"
+            v-if="canSee(role, 'workbench')"
             type="button"
             class="top-link"
             :aria-current="navGroup === 'workbench' ? 'page' : undefined"
@@ -28,6 +28,7 @@
           >工作台</button>
 
           <button
+            v-if="canSee(role, 'tickets')"
             type="button"
             class="top-link"
             :aria-current="navGroup === 'tickets' ? 'page' : undefined"
@@ -35,7 +36,7 @@
           >工单</button>
 
           <button
-            v-if="canSeeInternal"
+            v-if="canSee(role, 'device')"
             type="button"
             class="top-link"
             :aria-current="navGroup === 'device' ? 'page' : undefined"
@@ -43,6 +44,7 @@
           >设备</button>
 
           <button
+            v-if="canSee(role, 'knowledge')"
             type="button"
             class="top-link"
             :aria-current="navGroup === 'knowledge' ? 'page' : undefined"
@@ -58,16 +60,20 @@
               @click="adminMenuOpen = !adminMenuOpen; userMenuOpen = false"
             >管理 ▾</button>
             <div v-if="adminMenuOpen" class="dropdown-panel" role="menu">
-              <button type="button" class="dropdown-item" :aria-current="view === 'admin-customers' ? 'page' : undefined" @click="showAdmin('admin-customers')">客户与项目</button>
-              <button type="button" class="dropdown-item" :aria-current="view === 'admin-sop' ? 'page' : undefined" @click="showAdmin('admin-sop')">SOP 与规则</button>
-              <button type="button" class="dropdown-item" :aria-current="view === 'admin-reports' ? 'page' : undefined" @click="showAdmin('admin-reports')">指标与报表</button>
-              <button type="button" class="dropdown-item" :aria-current="view === 'admin-accounts' ? 'page' : undefined" @click="showAdmin('admin-accounts')">权限与配置</button>
+              <button
+                v-for="item in visibleAdminMenus"
+                :key="item.key"
+                type="button"
+                class="dropdown-item"
+                :aria-current="view === item.key ? 'page' : undefined"
+                @click="showAdmin(item.key)"
+              >{{ item.label }}</button>
             </div>
           </div>
         </nav>
 
         <div class="topbar-right">
-          <button v-if="canSeeInternal" type="button" class="bell-btn icon-btn" title="到期回访提醒" aria-label="到期回访提醒" @click="openDue('team')">
+          <button v-if="canSee(role, 'due')" type="button" class="bell-btn icon-btn" title="到期回访提醒" aria-label="到期回访提醒" @click="openDue('team')">
             <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 7a5 5 0 0 0-10 0c0 4.5-2 6-2 6h14s-2-1.5-2-6" />
               <path d="M8.5 16a1.7 1.7 0 0 0 3 0" />
@@ -76,7 +82,7 @@
           </button>
 
           <select
-            v-if="canSeeInternal"
+            v-if="canSee(role, 'duty-status')"
             v-model="agentStatus"
             class="agent-status-select"
             :class="agentStatus"
@@ -166,27 +172,16 @@
         <div class="ticket-tabs-bar">
           <div class="ticket-tabs" role="tablist" aria-label="工单视图">
             <button
-              v-if="canSeeInternal"
+              v-for="tab in visibleTicketTabs"
+              :key="tab.key"
               type="button"
               role="tab"
-              :aria-selected="ticketTab === 'dispatch'"
-              @click="switchTicketTab('dispatch')"
-            >调度大屏</button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="ticketTab === 'pool'"
-              @click="switchTicketTab('pool')"
-            >统一工单池</button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="ticketTab === 'mine'"
-              @click="switchTicketTab('mine')"
-            >我的待办</button>
+              :aria-selected="ticketTab === tab.key"
+              @click="switchTicketTab(tab.key)"
+            >{{ tab.label }}</button>
           </div>
           <div class="head-actions">
-            <button v-if="canSeeInternal" class="btn primary" type="button" @click="showNav('device')">+ 新建工单</button>
+            <button v-if="canSee(role, 'ticket-create')" class="btn primary" type="button" @click="showNav('device')">+ 新建工单</button>
           </div>
         </div>
 
@@ -267,21 +262,21 @@
 
       <!-- 一级菜单 5：管理 → 4 个二级页面 -->
       <AdminCustomersView
-        v-else-if="view === 'admin-customers' && canSeeAdminMenu"
+        v-else-if="view === 'admin-customers' && canSee(role, 'admin-customers')"
         :customers="customers"
         @refresh="loadCustomersList"
       />
 
-      <KnowledgeSopView v-else-if="view === 'admin-sop' && canSeeAdminMenu" :read-only="false" />
+      <KnowledgeSopView v-else-if="view === 'admin-sop' && canSee(role, 'admin-sop')" :read-only="false" />
 
       <AdminReportsView
-        v-else-if="view === 'admin-reports' && canSeeAdminMenu"
+        v-else-if="view === 'admin-reports' && canSee(role, 'admin-reports')"
         :monthly-report="monthlyReport"
         @refresh="loadMonthlyReport"
       />
 
       <AccountPanel
-        v-else-if="view === 'admin-accounts' && account.role === 'admin'"
+        v-else-if="view === 'admin-accounts' && canSee(role, 'admin-accounts')"
         :accounts="accounts"
         :busy="busy"
         :notice="accountNotice"
@@ -322,10 +317,17 @@ const PersonalWorkbench = defineAsyncComponent(() => import(/* webpackChunkName:
 const ProblemBoard = defineAsyncComponent(() => import(/* webpackChunkName: "view-board" */ './views/ProblemBoard.vue'))
 import { emptyFilters, useBoardQueues } from './composables/useBoardQueues'
 import { useProblemDraft } from './composables/useProblemDraft'
+import {
+  ADMIN_SUBMENUS,
+  TICKET_TABS,
+  canSee,
+  defaultTicketTabForRole,
+  guardViewForRole as guardRoleView
+} from './nav/menuConfig'
 import { initial, orderNumber, roleLabel } from './status'
 import {
   acceptProblemV11, addEvidence, addFollowup, assessProblem, assignProblemV11, assignableAccounts,
-  bindProblemDevice, changePassword, claimProblem, createAccount, currentAccount, dispatchProblemV11,
+  bindProblemDevice, changePassword, createAccount, currentAccount, dispatchProblemV11,
   escalateProblem, fetchMonthlyReport, finishCallback, forceDistributeV11, handoffProblem,
   linkFieldOrder, listAccounts, listCustomers, loadProblem, login, logout, quickCloseProblem,
   recordFieldResult, reopenProblemV11, resetAccountPassword as resetAccountPasswordApi,
@@ -366,7 +368,7 @@ const {
   boardItems, boardTotal, boardPage, boardHasNext, boardCategories, boardFilters, boardCursors, summary,
   dueScope, dueItems, dueTotal, dueNext,
   mineItems, mineTotal, mineNext,
-  loadBoard, loadDue, loadMine, refreshQueues: refreshBoardQueues, ensureFreshQueue, resetQueues
+  loadBoard, loadDue, loadMine, refreshQueues: refreshBoardQueues, resetQueues
 } = useBoardQueues(pageSize)
 
 function ownerLabel(value) { return !value || value === 'early' ? '无主' : value }
@@ -382,8 +384,10 @@ const {
   draft, refreshNote, beginCallback, snapshotDraft, fillFromServer, restoreDraft, resetDraft
 } = useProblemDraft({ canHandle, unowned, account, assignees })
 
-const canSeeInternal = computed(() => !['provider', 'oem'].includes(account.value?.role))
-const canSeeAdminMenu = computed(() => ['admin', 'dispatcher', 'quality'].includes(account.value?.role))
+const role = computed(() => account.value?.role)
+const canSeeAdminMenu = computed(() => canSee(role.value, 'admin'))
+const visibleAdminMenus = computed(() => ADMIN_SUBMENUS.filter(item => canSee(role.value, item.key)))
+const visibleTicketTabs = computed(() => TICKET_TABS.filter(tab => canSee(role.value, tab.key)))
 const navGroup = computed(() => {
   if (view.value === 'detail') return 'workbench'
   if (view.value === 'tickets' || view.value === 'due') return 'tickets'
@@ -415,12 +419,6 @@ const canHandoff = computed(() => Boolean(problem.value) && !['resolved', 'close
 function closeMenus() {
   adminMenuOpen.value = false
   userMenuOpen.value = false
-}
-
-function defaultTicketTabForRole(role) {
-  if (role === 'dispatcher') return 'dispatch'
-  if (role === 'engineer' || role === 'provider') return 'mine'
-  return 'pool'
 }
 
 function clearAccount() {
@@ -465,12 +463,7 @@ async function prepareWorkspace() {
 }
 
 function guardViewForRole(reqView) {
-  if (!canSeeInternal.value && ['device', 'due', 'admin-customers', 'admin-sop', 'admin-reports', 'admin-accounts'].includes(reqView)) {
-    return 'tickets'
-  }
-  if (!canSeeAdminMenu.value && reqView.startsWith('admin-')) return 'tickets'
-  if (reqView === 'admin-accounts' && account.value?.role !== 'admin') return 'tickets'
-  return reqView
+  return guardRoleView(role.value, reqView)
 }
 
 async function restoreRoute() {
@@ -489,7 +482,7 @@ async function restoreRoute() {
   }
   if (view.value === 'tickets') {
     const t = params.get('tab')
-    if (['dispatch', 'pool', 'mine'].includes(t) && (t !== 'dispatch' || canSeeInternal.value)) {
+    if (['dispatch', 'pool', 'mine'].includes(t) && canSee(role.value, t)) {
       ticketTab.value = t
     }
     if (ticketTab.value === 'mine') await loadMine(false)
